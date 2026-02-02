@@ -8,6 +8,10 @@ struct Args {
     /// Path to the firmware ELF file
     #[arg(short, long)]
     firmware: PathBuf,
+
+    /// Path to the system manifest (YAML)
+    #[arg(short, long)]
+    system: Option<PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -15,14 +19,29 @@ fn main() -> anyhow::Result<()> {
     
     let args = Args::parse();
     info!("Starting LabWired Simulator");
-    info!("Loading firmware: {:?}", args.firmware);
 
+    let bus = if let Some(sys_path) = args.system {
+        info!("Loading system manifest: {:?}", sys_path);
+        let manifest = labwired_config::SystemManifest::from_file(&sys_path)?;
+        let chip_path = sys_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join(&manifest.chip);
+        info!("Loading chip descriptor: {:?}", chip_path);
+        let chip = labwired_config::ChipDescriptor::from_file(&chip_path)?;
+        labwired_core::bus::SystemBus::from_config(&chip, &manifest)?
+    } else {
+        info!("Using default hardware configuration");
+        labwired_core::bus::SystemBus::new()
+    };
+
+    info!("Loading firmware: {:?}", args.firmware);
     let program = labwired_loader::load_elf(&args.firmware)?;
     
     info!("Firmware Loaded Successfully!");
     info!("Entry Point: {:#x}", program.entry_point);
     
-    let mut machine: labwired_core::Machine<labwired_core::cpu::CortexM> = labwired_core::Machine::new();
+    let mut machine = labwired_core::Machine {
+        cpu: labwired_core::cpu::CortexM::default(),
+        bus,
+    };
     machine.load_firmware(&program).expect("Failed to load firmware into memory");
     
     info!("Starting Simulation...");

@@ -26,10 +26,18 @@ pub trait Cpu {
     fn set_exception_pending(&mut self, exception_num: u32);
 }
 
+/// Trait representing a memory-mapped peripheral
+pub trait Peripheral: std::fmt::Debug + Send {
+    fn read(&self, offset: u64) -> SimResult<u8>;
+    fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
+    fn tick(&mut self) -> bool { false }
+}
+
 /// Trait representing the system bus
 pub trait Bus {
     fn read_u8(&self, addr: u64) -> SimResult<u8>;
     fn write_u8(&mut self, addr: u64, value: u8) -> SimResult<()>;
+    fn tick_peripherals(&mut self) -> Vec<u32>; // Returns list of pending exception numbers
     
     fn read_u16(&self, addr: u64) -> SimResult<u16> {
         let b0 = self.read_u8(addr)? as u16;
@@ -64,7 +72,7 @@ impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
         Self {
             cpu: C::default(),
-            bus: bus::SystemBus::new(1024 * 1024, 128 * 1024), // 1MB Flash, 128KB RAM mock
+            bus: bus::SystemBus::new(), 
         }
     }
 }
@@ -109,10 +117,10 @@ impl<C: Cpu> Machine<C> {
         let res = self.cpu.step(&mut self.bus);
         
         // Propagate peripherals
-        if self.bus.systick.tick() {
-            // SysTick Interrupt Triggered! (Exception 15)
-            self.cpu.set_exception_pending(15);
-            tracing::debug!("SysTick Exception Pend");
+        let interrupts = self.bus.tick_peripherals();
+        for irq in interrupts {
+            self.cpu.set_exception_pending(irq);
+            tracing::debug!("Exception {} Pend", irq);
         }
         
         res

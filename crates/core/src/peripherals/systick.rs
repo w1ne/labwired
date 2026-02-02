@@ -1,4 +1,4 @@
-use crate::SimResult;
+use crate::{SimResult, SimulationError};
 
 /// Mocked SysTick Timer peripheral
 /// Standard address: 0xE000_E010
@@ -20,48 +20,63 @@ impl Systick {
         }
     }
 
-    pub fn read(&self, offset: u64) -> SimResult<u32> {
+    fn read_reg(&self, offset: u64) -> u32 {
         match offset {
-            0x00 => Ok(self.csr),
-            0x04 => Ok(self.rvr),
-            0x08 => Ok(self.cvr),
-            0x0C => Ok(self.calib),
-            _ => Ok(0),
+            0x00 => self.csr,
+            0x04 => self.rvr,
+            0x08 => self.cvr,
+            0x0C => self.calib,
+            _ => 0,
         }
     }
 
-    pub fn write(&mut self, offset: u64, value: u32) -> SimResult<()> {
+    fn write_reg(&mut self, offset: u64, value: u32) {
         match offset {
             0x00 => {
-                // CSR: Only ENABLE (bit 0), TICKINT (bit 1), CLKSOURCE (bit 2) are writable
                 self.csr = value & 0x7;
             }
             0x04 => {
-                // RVR: 24-bit reload value
                 self.rvr = value & 0x00FF_FFFF;
             }
             0x08 => {
-                // CVR: Write clears value
                 self.cvr = 0;
-                // Clearing CVR also clears COUNTFLAG in CSR? (simplified for now)
                 self.csr &= !0x10000;
             }
             _ => {}
         }
+    }
+}
+
+impl crate::Peripheral for Systick {
+    fn read(&self, offset: u64) -> SimResult<u8> {
+        let reg_offset = offset & !3;
+        let byte_offset = (offset % 4) as u32;
+        let reg_val = self.read_reg(reg_offset);
+        Ok(((reg_val >> (byte_offset * 8)) & 0xFF) as u8)
+    }
+
+    fn write(&mut self, offset: u64, value: u8) -> SimResult<()> {
+        let reg_offset = offset & !3;
+        let byte_offset = (offset % 4) as u32;
+        let mut reg_val = self.read_reg(reg_offset);
+        
+        // Modify byte
+        let mask = 0xFF << (byte_offset * 8);
+        reg_val &= !mask;
+        reg_val |= (value as u32) << (byte_offset * 8);
+        
+        self.write_reg(reg_offset, reg_val);
         Ok(())
     }
 
-    /// Advance the timer by one tick
-    pub fn tick(&mut self) -> bool {
+    fn tick(&mut self) -> bool {
         if (self.csr & 0x1) == 0 {
-            return false; // Not enabled
+            return false;
         }
 
         if self.cvr == 0 {
             self.cvr = self.rvr;
-            // Set COUNTFLAG
             self.csr |= 0x10000;
-            // Return true if interrupt requested
             return (self.csr & 0x2) != 0;
         } else {
             self.cvr -= 1;
