@@ -43,3 +43,56 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
 
     Instruction::Unknown(opcode)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_nop() {
+        assert_eq!(decode_thumb_16(0xBF00), Instruction::Nop);
+    }
+
+    #[test]
+    fn test_decode_mov_imm() {
+        // MOV R0, #42 -> 0x202A
+        assert_eq!(
+            decode_thumb_16(0x202A),
+            Instruction::MovImm { rd: 0, imm: 42 }
+        );
+        // MOV R3, #255 -> 0x23FF
+        assert_eq!(
+            decode_thumb_16(0x23FF),
+            Instruction::MovImm { rd: 3, imm: 255 }
+        );
+    }
+
+    #[test]
+    fn test_decode_branch() {
+        // B <label> (Unconditional)
+        // Opcode 0xE000 | 11-bit offset
+        // Offset is sign extended and shifted left by 1.
+        
+        // Positive offset: +2 (in instructions) -> +4 bytes
+        // Encoding: i=2 -> 0xE002
+        // Target = PC + 4 + (2 << 1) = PC + 8
+        assert_eq!(
+            decode_thumb_16(0xE002),
+            Instruction::Branch { offset: 4 }
+        );
+        
+        // Negative offset: -2 (in instructions) -> -4 bytes
+        // i = -2 = 0x7FE (11-bit two's complement)
+        // Opcode = 0xE000 | 0x7FE = 0xE7FE
+        // Target = PC + 4 + (-2 << 1) = PC
+        assert_eq!(
+            decode_thumb_16(0xE7FE),
+            Instruction::Branch { offset: -4 }
+        );
+    }
+
+    #[test]
+    fn test_decode_unknown() {
+        assert_eq!(decode_thumb_16(0xFFFF), Instruction::Unknown(0xFFFF));
+    }
+}
