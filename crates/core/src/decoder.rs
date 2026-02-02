@@ -18,6 +18,10 @@ pub enum Instruction {
     SubImm8 { rd: u8, imm: u8 },        // SUB Rd, #imm8
     
     CmpImm { rn: u8, imm: u8 },         // CMP Rn, #imm8
+    CmpReg { rn: u8, rm: u8 },         // CMP Rn, Rm
+    MovReg { rd: u8, rm: u8 },         // MOV Rd, Rm (High registers)
+    Movw { rd: u8, imm: u16 },         // MOVW Rd, #imm16
+    Movt { rd: u8, imm: u16 },         // MOVT Rd, #imm16
     
     And { rd: u8, rm: u8 },             // AND Rd, Rm
     Orr { rd: u8, rm: u8 },             // ORR Rd, Rm
@@ -33,6 +37,8 @@ pub enum Instruction {
     LdrImm { rt: u8, rn: u8, imm: u8 }, // LDR Rt, [Rn, #imm] (imm is *4)
     StrImm { rt: u8, rn: u8, imm: u8 }, // STR Rt, [Rn, #imm] (imm is *4)
     LdrLit { rt: u8, imm: u16 },        // LDR Rt, [PC, #imm]
+    LdrbImm { rt: u8, rn: u8, imm: u8 },// LDRB Rt, [Rn, #imm]
+    StrbImm { rt: u8, rn: u8, imm: u8 },// STRB Rt, [Rn, #imm]
 
     // Stack
     Push { registers: u8, m: bool },    // PUSH {Rlist, LR?}
@@ -47,8 +53,8 @@ pub enum Instruction {
     StrSp { rt: u8, imm: u16 },         // STR Rt, [SP, #imm]
     
     Unknown(u16),
-    // Intermediate state for 32-bit instruction (First half of BL)
-    BlPrefix(u16),
+    // Intermediate state for 32-bit instruction (First half)
+    Prefix32(u16),
 }
 
 /// Decodes a 16-bit Thumb instruction
@@ -109,17 +115,38 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return match op_alu {
             0x0 => Instruction::And { rd, rm }, // AND
             0x1 => Instruction::Eor { rd, rm }, // EOR
+            0xA => Instruction::CmpReg { rn: rd, rm }, // CMP (register) T1
             0xC => Instruction::Orr { rd, rm }, // ORR
             0xF => Instruction::Mvn { rd, rm }, // MVN
             _ => Instruction::Unknown(opcode), 
         };
     }
     
-    // 3.1 BX (T1): 0100 0111 0xxxx 000 (0x4700 mask 0xFF80)
-    // Bit 3-6 is Rm.
-    if (opcode & 0xFF80) == 0x4700 {
-         let rm = ((opcode >> 3) & 0xF) as u8;
-         return Instruction::Bx { rm };
+    // 3.1 Special Data / Branch Exchange (T1): 0100 01xx ...
+    if (opcode & 0xFC00) == 0x4400 {
+        let op = (opcode >> 8) & 0x3;
+        match op {
+            1 => {
+                // CMP (register) T2 (High registers)
+                let n = ((opcode >> 7) & 0x1) << 3;
+                let rn = (n | (opcode & 0x7)) as u8;
+                let rm = ((opcode >> 3) & 0xF) as u8;
+                return Instruction::CmpReg { rn, rm };
+            }
+            2 => {
+                // MOV (register) T1
+                let d = ((opcode >> 7) & 0x1) << 3;
+                let rd = (d | (opcode & 0x7)) as u8;
+                let rm = ((opcode >> 3) & 0xF) as u8;
+                return Instruction::MovReg { rd, rm };
+            }
+            3 => {
+                // BX (T1)
+                let rm = ((opcode >> 3) & 0xF) as u8;
+                return Instruction::Bx { rm };
+            }
+            _ => return Instruction::Unknown(opcode),
+        }
     }
     
     // 4. Load/Store (Imm5) (T1): 0110 0... -> STR, 0110 1... -> LDR
@@ -136,6 +163,20 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
              return Instruction::LdrImm { rt, rn, imm }; // 0x68xx
         } else {
              return Instruction::StrImm { rt, rn, imm }; // 0x60xx
+        }
+    }
+
+    // 4.3 Load/Store Byte (Imm5) (T1): 0111 Liii iinn nttt
+    if (opcode & 0xF000) == 0x7000 {
+        let is_load = (opcode & 0x0800) != 0;
+        let imm = ((opcode >> 6) & 0x1F) as u8;
+        let rn = ((opcode >> 3) & 0x7) as u8;
+        let rt = (opcode & 0x7) as u8;
+        
+        if is_load {
+            return Instruction::LdrbImm { rt, rn, imm }; // 0x78xx
+        } else {
+            return Instruction::StrbImm { rt, rn, imm }; // 0x70xx
         }
     }
     
@@ -200,15 +241,12 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return Instruction::Branch { offset: offset << 1 };
     }
     
-    // 6. BL Prefix (Part of 32-bit BL)
-    // 1111 0... (0xF000 mask 0xF800) -> BL first half?
-    // Actually, T1 BL is two 16-bit instructions.
-    // 1111 0sss ssss ssss
-    if (opcode & 0xF800) == 0xF000 {
-         return Instruction::BlPrefix(opcode);
+    // 6. 32-bit Instruction Prefix
+    // 1111 0... (0xF000 mask 0xF800)
+    // 1111 1... (0xF800 mask 0xF800)
+    if (opcode & 0xF000) == 0xF000 {
+         return Instruction::Prefix32(opcode);
     }
-    // BL Suffix: 1101 x... ? No, BL is F0xx ... F8xx
-    // Wait for the CPU step to handle 32-bit reassembly or just return prefix for now.
     
     // NOP: 1011 1111 0000 0000 -> 0xBF00
     if opcode == 0xBF00 {
@@ -332,5 +370,26 @@ mod tests {
         
         // LSLS R0, R0, #0 (Opcode 0x0000)
         assert_eq!(decode_thumb_16(0x0000), Instruction::Lsl { rd: 0, rm: 0, imm: 0 });
+    }
+
+    #[test]
+    fn test_decode_cmp_reg() {
+        // CMP R1, R0 -> 0x4281 (0100 0010 10 000 001)
+        assert_eq!(decode_thumb_16(0x4281), Instruction::CmpReg { rn: 1, rm: 0 });
+    }
+
+    #[test]
+    fn test_decode_mov_reg() {
+        // MOV R7, SP -> 0x466F (0100 0110 0110 1111)
+        // Rd=7, Rm=13 (SP)
+        assert_eq!(decode_thumb_16(0x466F), Instruction::MovReg { rd: 7, rm: 13 });
+    }
+
+    #[test]
+    fn test_decode_ldrb_strb_imm() {
+        // STRB R1, [R0, #0] -> 0x7001 (0111 0 00000 000 001)
+        assert_eq!(decode_thumb_16(0x7001), Instruction::StrbImm { rt: 1, rn: 0, imm: 0 });
+        // LDRB R1, [R0, #0] -> 0x7801 (0111 1 00000 000 001)
+        assert_eq!(decode_thumb_16(0x7801), Instruction::LdrbImm { rt: 1, rn: 0, imm: 0 });
     }
 }

@@ -226,4 +226,55 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(machine.cpu.r2, 0x04);
     }
+
+    #[test]
+    fn test_cpu_execute_cmp_reg() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        machine.cpu.r1 = 10;
+        machine.cpu.r0 = 5;
+        // CMP R1, R0 -> 0x4281
+        machine.bus.write_u8(base_addr, 0x81).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x42).unwrap();
+        
+        machine.step().unwrap();
+        // 10 - 5 = 5. N=0, Z=0, C=1 (no borrow), V=0
+        let xpsr = machine.cpu.xpsr >> 28;
+        assert_eq!(xpsr & 0b1000, 0); // N
+        assert_eq!(xpsr & 0b0100, 0); // Z
+        assert_eq!(xpsr & 0b0010, 0b0010); // C
+    }
+
+    #[test]
+    fn test_cpu_execute_mov_reg() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        machine.cpu.sp = 0x2002_0000;
+        // MOV R7, SP -> 0x466F
+        machine.bus.write_u8(base_addr, 0x6F).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x46).unwrap();
+        
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r7, 0x2002_0000);
+    }
+
+    #[test]
+    fn test_cpu_execute_strb_imm() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        machine.cpu.r1 = 0xAB;
+        machine.cpu.r0 = 0x2000_1000;
+        // STRB R1, [R0, #0] -> 0x7001
+        machine.bus.write_u8(base_addr, 0x01).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x70).unwrap();
+        
+        machine.step().unwrap();
+        assert_eq!(machine.bus.read_u8(0x2000_1000).unwrap(), 0xAB);
+    }
 }

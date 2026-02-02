@@ -167,6 +167,16 @@ impl Cpu for CortexM {
                 let (res, c, v) = sub_with_flags(op1, imm as u32);
                 self.update_nzcv(res, c, v);
             },
+            Instruction::CmpReg { rn, rm } => {
+                let op1 = self.read_reg(rn);
+                let op2 = self.read_reg(rm);
+                let (res, c, v) = sub_with_flags(op1, op2);
+                self.update_nzcv(res, c, v);
+            },
+            Instruction::MovReg { rd, rm } => {
+                let val = self.read_reg(rm);
+                self.write_reg(rd, val);
+            },
             // Logic
             Instruction::And { rd, rm } => {
                 let res = self.read_reg(rd) & self.read_reg(rm);
@@ -258,6 +268,25 @@ impl Cpu for CortexM {
                     tracing::error!("Bus Write Fault (StrSp) at {:#x}", addr);
                 }
             },
+            
+            // Memory Operations (Byte)
+            Instruction::LdrbImm { rt, rn, imm } => {
+                let base = self.read_reg(rn);
+                let addr = base.wrapping_add(imm as u32);
+                if let Ok(val) = bus.read_u8(addr as u64) {
+                    self.write_reg(rt, val as u32);
+                } else {
+                    tracing::error!("Bus Read Fault (LDRB) at {:#x}", addr);
+                }
+            },
+            Instruction::StrbImm { rt, rn, imm } => {
+                let base = self.read_reg(rn);
+                let addr = base.wrapping_add(imm as u32);
+                let val = (self.read_reg(rt) & 0xFF) as u8;
+                if let Err(_) = bus.write_u8(addr as u64, val) {
+                    tracing::error!("Bus Write Fault (STRB) at {:#x}", addr);
+                }
+            },
 
             // Stack Operations
             Instruction::Push { registers, m } => {
@@ -331,7 +360,7 @@ impl Cpu for CortexM {
             Instruction::Bl { offset } => {
                 // BL: Branch with Link.
                 // LR = Next Instruction Address | 1 (Thumb bit)
-                let next_pc = self.pc + 4; // 32-bit instruction size for BL? 
+                let _next_pc = self.pc + 4; // 32-bit instruction size for BL? 
                 // Wait. BL is decoded as 32-bit.
                 // If we assume decode_thumb_16 handled a 32-bit stream, then PC increment should be adjusted?
                 // Or does `decode_thumb_16` return `BlPrefix` and then we handle it?
@@ -371,19 +400,68 @@ impl Cpu for CortexM {
                 pc_increment = 0;
             },
             
-            Instruction::BlPrefix(opcode) => {
-                // This is the first half of a 32-bit BL instruction (0xF0xx)
-                // We need to fetch the next instruction immediately to get the offset.
-                // Fetch next 16 bits
+            Instruction::Prefix32(h1) => {
+                // ... (existing)
+                // This is the first half of a 32-bit instruction
                 let next_pc = (self.pc & !1) + 2;
-                if let Ok(suffix) = bus.read_u16(next_pc as u64) {
-                     // Check if suffix is 11x1xxxx
-                     // For MVP, let's just trace warning and skip 4 bytes (2 for prefix, 2 for suffix)
-                     tracing::warn!("BL instruction execution (32-bit) not fully implemented. Skipping.");
-                     pc_increment = 4;
+                if let Ok(h2) = bus.read_u16(next_pc as u64) {
+                    if (h2 & 0xD000) == 0xD000 && (h1 & 0xF800) == 0xF000 {
+                        // Reassemble BL offset (T1 encoding)
+                        let s = ((h1 >> 10) & 0x1) as i32;
+                        let imm10 = (h1 & 0x3FF) as i32;
+                        let j1 = ((h2 >> 13) & 0x1) as i32;
+                        let j2 = ((h2 >> 11) & 0x1) as i32;
+                        let imm11 = (h2 & 0x7FF) as i32;
+                        
+                        let i1 = (!(j1 ^ s)) & 0x1;
+                        let i2 = (!(j2 ^ s)) & 0x1;
+                        
+                        let mut offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
+                        // Sign extend from bit 24
+                        if (offset & (1 << 24)) != 0 {
+                            offset |= !0x01FF_FFFF;
+                        }
+                        
+                        self.lr = (self.pc + 4) | 1;
+                        self.pc = (self.pc as i32 + 4 + offset) as u32;
+                        pc_increment = 0;
+                    } else if (h1 & 0xFBF0) == 0xF240 {
+                        // MOVW (T1)
+                        let i = (h1 >> 10) & 0x1;
+                        let imm4 = h1 & 0xF;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm8 = h2 & 0xFF;
+                        
+                        // Encoding: imm4 : i : imm3 : imm8
+                        let imm16 = (imm4 << 12) | (i << 11) | (imm3 << 8) | imm8;
+                        self.write_reg(rd, imm16 as u32);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFBF0) == 0xF2C0 {
+                        // MOVT (T1)
+                        let i = (h1 >> 10) & 0x1;
+                        let imm4 = h1 & 0xF;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm8 = h2 & 0xFF;
+                        
+                        // Encoding: imm4 : i : imm3 : imm8
+                        let imm16 = (imm4 << 12) | (i << 11) | (imm3 << 8) | imm8;
+                        let old_val = self.read_reg(rd);
+                        let new_val = (old_val & 0x0000FFFF) | ((imm16 as u32) << 16);
+                        self.write_reg(rd, new_val);
+                        pc_increment = 4;
+                    } else {
+                        tracing::warn!("Unknown 32-bit instruction: {:#06x} {:#06x} at {:#x}", h1, h2, self.pc);
+                        pc_increment = 4;
+                    }
                 } else {
-                    pc_increment = 2; // Only skipped prefix? weird.
+                    tracing::error!("Bus Read Fault (32-bit suffix) at {:#x}", next_pc);
+                    pc_increment = 2;
                 }
+            },
+            Instruction::Movw { .. } | Instruction::Movt { .. } => {
+                unreachable!("32-bit instructions should be handled in Prefix32 path");
             },
             
             Instruction::Unknown(op) => {
