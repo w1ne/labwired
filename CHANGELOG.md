@@ -23,14 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-02-02
 
 ### Added
-- **ISA**: Fully implemented MVP Instruction Set:
+- **ISA**: Expanded Instruction Set for robust firmware simulation:
     - Arithmetic: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`.
     - Logic: `AND`, `ORR`, `EOR`.
-    - Memory: `LDR` & `STR` (Immediate Offset), `LDR` (Literal).
-    - Stack & Control: `PUSH`, `POP`, `BL`, `BX`.
+    - Shifts: `LSL`, `LSR`, `ASR` (immediate).
+    - Memory: `LDR` & `STR` (Immediate Offset), `LDR` (Literal), `LDR` & `STR` (SP-relative).
+    - Stack & Control: `PUSH`, `POP`, `BL`, `BX`, and Conditional Branches (`Bcc`).
 - **Peripherals**: UART stub implementation mapped to `0x4000_C000`.
 - **Firmware**: Added `crates/firmware` demo project targeting `thumbv7m-none-eabi`.
 - **Core**: Refactored `Machine` to be architecture-agnostic (Pluggable Core).
+
+### Fixed
+- **Build**: Resolved ELF load offset issue by correctly configuring workspace-level linker scripts (`link.x`).
+- **ISA**: Fixed potential overflow in large immediate offsets for `LDR/STR` instructions.
 
 ### Changed
 - `labwired-cli` now runs 20,000 steps by default to support firmware boot.

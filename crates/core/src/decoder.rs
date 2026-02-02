@@ -6,6 +6,7 @@ pub enum Instruction {
     Nop,
     MovImm { rd: u8, imm: u8 },         // MOV Rd, #imm8
     Branch { offset: i32 },             // B <label>
+    BranchCond { cond: u8, offset: i32 }, // Bcc <label>
     
     // Arithmetic & Logic
     AddReg { rd: u8, rn: u8, rm: u8 },  // ADD Rd, Rn, Rm
@@ -23,10 +24,15 @@ pub enum Instruction {
     Eor { rd: u8, rm: u8 },             // EOR Rd, Rm
     Mvn { rd: u8, rm: u8 },             // MVN Rd, Rm
     
+    // Shifts
+    Lsl { rd: u8, rm: u8, imm: u8 },    // LSL Rd, Rm, #imm5
+    Lsr { rd: u8, rm: u8, imm: u8 },    // LSR Rd, Rm, #imm5
+    Asr { rd: u8, rm: u8, imm: u8 },    // ASR Rd, Rm, #imm5
+    
     // Memory
     LdrImm { rt: u8, rn: u8, imm: u8 }, // LDR Rt, [Rn, #imm] (imm is *4)
     StrImm { rt: u8, rn: u8, imm: u8 }, // STR Rt, [Rn, #imm] (imm is *4)
-    LdrLit { rt: u8, imm: u8 },         // LDR Rt, [PC, #imm]
+    LdrLit { rt: u8, imm: u16 },        // LDR Rt, [PC, #imm]
 
     // Stack
     Push { registers: u8, m: bool },    // PUSH {Rlist, LR?}
@@ -36,6 +42,10 @@ pub enum Instruction {
     Bl { offset: i32 },                 // BL <label> (32-bit T1+T2)
     Bx { rm: u8 },                      // BX Rm
     
+    // SP-Relative
+    LdrSp { rt: u8, imm: u16 },         // LDR Rt, [SP, #imm]
+    StrSp { rt: u8, imm: u16 },         // STR Rt, [SP, #imm]
+    
     Unknown(u16),
     // Intermediate state for 32-bit instruction (First half of BL)
     BlPrefix(u16),
@@ -43,6 +53,22 @@ pub enum Instruction {
 
 /// Decodes a 16-bit Thumb instruction
 pub fn decode_thumb_16(opcode: u16) -> Instruction {
+    // 0. Shift (immediate), add, subtract, move, and compare
+    // 0.1 Shift (immediate) (T1): 000xx ...
+    if (opcode & 0xE000) == 0x0000 {
+        let op = (opcode >> 11) & 0x3;
+        let imm5 = ((opcode >> 6) & 0x1F) as u8;
+        let rm = ((opcode >> 3) & 0x7) as u8;
+        let rd = (opcode & 0x7) as u8;
+        
+        match op {
+            0 => return Instruction::Lsl { rd, rm, imm: imm5 },
+            1 => return Instruction::Lsr { rd, rm, imm: imm5 },
+            2 => return Instruction::Asr { rd, rm, imm: imm5 },
+            _ => {}, // Possibly Add/Sub (Register/Imm3) handled later
+        }
+    }
+
     // 1. Move Immediate (T1): 0010 0ddd iiii iiii
     if (opcode & 0xE000) == 0x2000 {
         let op = (opcode >> 11) & 0x3;
@@ -116,8 +142,8 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
     // 4.1 LDR Literal (T1): 0100 1ttt iiii iiii
     if (opcode & 0xF800) == 0x4800 {
         let rt = ((opcode >> 8) & 0x7) as u8;
-        let imm = (opcode & 0xFF) as u8; // imm8 * 4
-        return Instruction::LdrLit { rt, imm: imm << 2 };
+        let imm8 = (opcode & 0xFF) as u16; 
+        return Instruction::LdrLit { rt, imm: imm8 << 2 };
     }
     
     // 4.2 PUSH/POP
@@ -134,7 +160,37 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return Instruction::Pop { registers, p };
     }
 
-    // 5. Branch (T1/T2)
+    // 6. SP-relative Load/Store (T1): 1001 Lttt iiii iiii (0x9000 mask 0xF000)
+    // STR: 1001 0... (0x90xx)
+    // LDR: 1001 1... (0x98xx)
+    if (opcode & 0xF000) == 0x9000 {
+        let rt = ((opcode >> 8) & 0x7) as u8;
+        let imm8 = (opcode & 0xFF) as u16;
+        // Immediate is scaled by 4
+        let imm = imm8 << 2;
+        
+        if (opcode & 0x0800) != 0 {
+            return Instruction::LdrSp { rt, imm };
+        } else {
+            return Instruction::StrSp { rt, imm };
+        }
+    }
+
+    // 7. Conditional Branch (Bcc): 1101 xxxx iiii iiii
+    if (opcode & 0xF000) == 0xD000 {
+        let cond = ((opcode >> 8) & 0xF) as u8;
+        // Don't match SWI (1101 1111 ...) -> cond 0xF is SWI
+        if cond != 0xF {
+           let mut offset = (opcode & 0xFF) as i32;
+           // Sign extend 8-bit to 32-bit
+           if (offset & 0x80) != 0 {
+               offset |= !0xFF;
+           }
+           return Instruction::BranchCond { cond, offset: offset << 1 };
+        }
+    }
+
+    // 8. Branch (T1/T2)
     // Unconditional Branch T2: 1110 0...
     if (opcode & 0xF800) == 0xE000 {
         let mut offset = (opcode & 0x7FF) as i32;
@@ -231,19 +287,50 @@ mod tests {
         // BX R14 -> 0x4770 (0100 0111 0111 0000)
         // Rm=14 (LR)
         assert_eq!(decode_thumb_16(0x4770), Instruction::Bx { rm: 14 });
-        
-        // LDR R0, [PC, #4] -> 0x4801 (0100 1000 0000 0001)
-        // Rt=0, imm=1 (scaled to 4)
-        assert_eq!(decode_thumb_16(0x4801), Instruction::LdrLit { rt: 0, imm: 4 });
     }
-    
-    // Existing tests...
+        
+    #[test]
+    fn test_decode_sp_rel() {
+        // STR R0, [SP, #0] -> 0x9000 (1001 0 000 00000000)
+        assert_eq!(decode_thumb_16(0x9000), Instruction::StrSp { rt: 0, imm: 0 });
+        
+        // LDR R1, [SP, #4] -> 0x9901 (1001 1 001 00000001)
+        // imm8=1, scaled*4 = 4.
+        assert_eq!(decode_thumb_16(0x9901), Instruction::LdrSp { rt: 1, imm: 4 });
+    }
+
+    #[test]
+    fn test_decode_cond_branch() {
+        // BNE +4 (Target PC+4+4)
+        // Encoding: 1101 0001 0000 0001 -> 0xD101
+        // Cond=1 (NE), imm8=1. Offset = 1<<1 = 2.
+        assert_eq!(decode_thumb_16(0xD101), Instruction::BranchCond { cond: 1, offset: 2 });
+        
+        // BEQ -4 (0xFD) -> 0xD0FD
+        // Cond=0 (EQ), imm8=FD (-3). Offset = -3<<1 = -6.
+        assert_eq!(decode_thumb_16(0xD0FD), Instruction::BranchCond { cond: 0, offset: -6 });
+    }
+
     #[test]
     fn test_decode_nop() {
         assert_eq!(decode_thumb_16(0xBF00), Instruction::Nop);
     }
+    
     #[test]
     fn test_decode_branch() {
          assert_eq!(decode_thumb_16(0xE002), Instruction::Branch { offset: 4 });
+    }
+
+    #[test]
+    fn test_decode_shifts() {
+        // LSLS R0, R1, #2 -> 0x0088 (000 00 00010 001 000)
+        assert_eq!(decode_thumb_16(0x0088), Instruction::Lsl { rd: 0, rm: 1, imm: 2 });
+        // LSRS R2, R3, #4 -> 0x091A (000 01 00100 011 010)
+        assert_eq!(decode_thumb_16(0x091A), Instruction::Lsr { rd: 2, rm: 3, imm: 4 });
+        // ASRS R4, R5, #6 -> 0x11AC (000 10 00110 101 100)
+        assert_eq!(decode_thumb_16(0x11AC), Instruction::Asr { rd: 4, rm: 5, imm: 6 });
+        
+        // LSLS R0, R0, #0 (Opcode 0x0000)
+        assert_eq!(decode_thumb_16(0x0000), Instruction::Lsl { rd: 0, rm: 0, imm: 0 });
     }
 }

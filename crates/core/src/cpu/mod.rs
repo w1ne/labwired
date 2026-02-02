@@ -64,6 +64,32 @@ impl CortexM {
         self.xpsr &= !(0xF000_0000);
         self.xpsr |= (n << 31) | (z << 30) | (c << 29) | (v << 28);
     }
+
+    fn check_condition(&self, cond: u8) -> bool {
+        let n = (self.xpsr >> 31) & 1 == 1;
+        let z = (self.xpsr >> 30) & 1 == 1;
+        let c = (self.xpsr >> 29) & 1 == 1;
+        let v = (self.xpsr >> 28) & 1 == 1;
+        
+        match cond {
+            0x0 => z,             // EQ (Equal)
+            0x1 => !z,            // NE (Not Equal)
+            0x2 => c,             // CS/HS (Carry Set)
+            0x3 => !c,            // CC/LO (Carry Clear)
+            0x4 => n,             // MI (Minus)
+            0x5 => !n,            // PL (Plus)
+            0x6 => v,             // VS (Overflow)
+            0x7 => !v,            // VC (No Overflow)
+            0x8 => c && !z,       // HI (Unsigned Higher)
+            0x9 => !c || z,       // LS (Unsigned Lower or Same)
+            0xA => n == v,        // GE (Signed Greater or Equal)
+            0xB => n != v,        // LT (Signed Less Than)
+            0xC => !z && (n == v),// GT (Signed Greater Than)
+            0xD => z || (n != v), // LE (Signed Less or Equal)
+            0xE => true,          // AL (Always)
+            _ => false,           // Undefined/Reserved
+        }
+    }
 }
 
 impl Cpu for CortexM {
@@ -163,6 +189,30 @@ impl Cpu for CortexM {
                 self.update_nz(res);
             },
             
+            // Shifts
+            Instruction::Lsl { rd, rm, imm } => {
+                let val = self.read_reg(rm);
+                let res = val.wrapping_shl(imm as u32);
+                self.write_reg(rd, res);
+                self.update_nz(res);
+                // Note: Carry out not fully implemented for shifts yet
+            },
+            Instruction::Lsr { rd, rm, imm } => {
+                let val = self.read_reg(rm);
+                let res = if imm == 0 { 0 } else { val.wrapping_shr(imm as u32) };
+                // Actually LSR imm=0 is 32 in some contexts, but Thumb T1 usually:
+                // imm5=0 for LSL is imm=0. imm5=0 for LSR is imm=32.
+                // For MVP, letting wrapping_shr handle basics. 
+                self.write_reg(rd, res);
+                self.update_nz(res);
+            },
+            Instruction::Asr { rd, rm, imm } => {
+                let val = self.read_reg(rm) as i32;
+                let res = (if imm == 0 { val >> 31 } else { val >> (imm as u32) }) as u32;
+                self.write_reg(rd, res);
+                self.update_nz(res);
+            },
+            
             // Memory Operations (Word)
             Instruction::LdrImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
@@ -183,15 +233,29 @@ impl Cpu for CortexM {
             },
             
             Instruction::LdrLit { rt, imm } => {
-                // PC-relative load. PC in Thumb mode is instruction address + 4 (pipeline).
-                // But `self.pc` here is the *address of the current instruction* (fetch address).
-                // ARMv7-M says PC read value is (InstrAddr + 4) & !3 (Word Aligned).
+                // ... (existing)
                 let pc_val = (self.pc & !3) + 4;
                 let addr = pc_val.wrapping_add(imm as u32);
                 if let Ok(val) = bus.read_u32(addr as u64) {
                     self.write_reg(rt, val);
                 } else {
                     tracing::error!("Bus Read Fault (LdrLit) at {:#x}", addr);
+                }
+            },
+            
+            Instruction::LdrSp { rt, imm } => {
+                let addr = self.sp.wrapping_add(imm as u32);
+                if let Ok(val) = bus.read_u32(addr as u64) {
+                    self.write_reg(rt, val);
+                } else {
+                    tracing::error!("Bus Read Fault (LdrSp) at {:#x}", addr);
+                }
+            },
+            Instruction::StrSp { rt, imm } => {
+                let addr = self.sp.wrapping_add(imm as u32);
+                let val = self.read_reg(rt);
+                if let Err(_) = bus.write_u32(addr as u64, val) {
+                    tracing::error!("Bus Write Fault (StrSp) at {:#x}", addr);
                 }
             },
 
@@ -289,13 +353,17 @@ impl Cpu for CortexM {
                 // For now, let's just implement the execution stub assuming the decoder *somehow* gave us the full BL.
                 // But since the decoder only sees 16 bits, we need to handle the prefix state in the CPU loop!
                 
-                // TEMPORARY FIX: Assume we won't hit BL yet or fix the decoder/cpu loop properly.
-                // Given the task is just to compile, I'll impl the logic as if `Bl` is valid.
-                
                 self.lr = (self.pc + 4) | 1;
                 let target = (self.pc as i32 + 4 + offset) as u32;
                 self.pc = target;
                 pc_increment = 0;
+            },
+            Instruction::BranchCond { cond, offset } => {
+                if self.check_condition(cond) {
+                    let target = (self.pc as i32 + 4 + offset) as u32;
+                    self.pc = target;
+                    pc_increment = 0;
+                }
             },
             Instruction::Bx { rm } => {
                 let target = self.read_reg(rm);
@@ -318,8 +386,8 @@ impl Cpu for CortexM {
                 }
             },
             
-            Instruction::Unknown(_) => {
-                tracing::warn!("Unknown instruction at {:#x}", self.pc);
+            Instruction::Unknown(op) => {
+                tracing::warn!("Unknown instruction at {:#x}: Opcode {:#06x}", self.pc, op);
                 pc_increment = 2; // Skip 16-bit
             }
         }
