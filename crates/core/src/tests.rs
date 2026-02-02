@@ -277,4 +277,118 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(machine.bus.read_u8(0x2000_1000).unwrap(), 0xAB);
     }
+
+    #[test]
+    fn test_systick_timer() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        
+        // 1. Configure SysTick
+        // RVR = 10 (Reload after 10 ticks)
+        machine.bus.write_u32(0xE000_E014, 10).unwrap();
+        // CSR = 1 (Enable)
+        machine.bus.write_u32(0xE000_E010, 1).unwrap();
+        
+        // CVR is initially 0, so first tick should reload and start counting?
+        // In my impl: tick() checks ENABLE. If 0, returns false. 
+        // If cvr == 0, cvr = rvr, sets COUNTFLAG.
+        
+        // Step 1: PC=0 (Unknown instruction at 0 is likely, but machine.step will still tick systick)
+        let _ = machine.step(); 
+        let cvr = machine.bus.read_u32(0xE000_E018).unwrap();
+        assert_eq!(cvr, 10);
+        
+        // Step 2-11: Count down to 0
+        for _ in 0..10 {
+            let _ = machine.step();
+        }
+        
+        let cvr_final = machine.bus.read_u32(0xE000_E018).unwrap();
+        assert_eq!(cvr_final, 0);
+        
+        let csr = machine.bus.read_u32(0xE000_E010).unwrap();
+        assert_eq!(csr & 0x10000, 0x10000); // COUNTFLAG should be set
+    }
+
+    #[test]
+    fn test_exception_stacking() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        
+        // 1. Setup Vector Table for SysTick (Exception 15)
+        // Address = 15 * 4 = 60 (0x3C)
+        let isr_addr: u32 = 0x0000_1000;
+        machine.bus.write_u32(0x3C, isr_addr | 1).unwrap(); // Thumb address
+        
+        // 2. Setup initial state
+        machine.cpu.pc = 0x2000_0000;
+        machine.cpu.sp = 0x2002_0000;
+        machine.cpu.r0 = 0x12345678;
+        
+        // 3. Trigger SysTick (Reload=1, Enable=3 [ENABLE|TICKINT])
+        machine.bus.write_u32(0xE000_E014, 1).unwrap();
+        machine.bus.write_u32(0xE000_E010, 3).unwrap();
+        
+        // Step 1: PC=0x2000_0000. Ticks SysTick.
+        // SysTick wrap triggers exception 15.
+        let _ = machine.step(); 
+        
+        // Step 2: Next step should detect pending exception AND handle it.
+        // It should perform stacking and jump to 0x1000.
+        let _ = machine.step();
+        
+        assert_eq!(machine.cpu.pc, 0x1000);
+        assert_eq!(machine.cpu.sp, 0x2002_0000 - 32); 
+        assert_eq!(machine.cpu.lr, 0xFFFF_FFF9);
+        
+        // Check if R0 was stacked correctly at [SP]
+        let stacked_r0 = machine.bus.read_u32(machine.cpu.sp as u64).unwrap();
+        assert_eq!(stacked_r0, 0x12345678);
+    }
+
+    #[test]
+    fn test_exception_lifecycle() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        
+        // 1. Setup SysTick Vector
+        let isr_addr: u32 = 0x0000_1000;
+        machine.bus.write_u32(0x3C, isr_addr | 1).unwrap();
+        
+        // 2. Setup initial state
+        machine.cpu.pc = 0x2000_0000;
+        machine.cpu.sp = 0x2002_0000;
+        machine.cpu.r0 = 10;
+        machine.cpu.r7 = 20;
+        
+        // 3. Trigger SysTick
+        machine.bus.write_u32(0xE000_E014, 100).unwrap();
+        machine.bus.write_u32(0xE000_E010, 3).unwrap();
+        
+        // Step 1: Wrap SysTick
+        machine.step().unwrap();
+        
+        // Step 2: Handle Exception (Entry)
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.pc, 0x1000);
+        assert_eq!(machine.cpu.lr, 0xFFFF_FFF9);
+        
+        // 4. In ISR: Modify R0, then BX LR
+        // MOV R0, #42 -> 0x202A
+        machine.bus.write_u8(0x1000, 0x2A).unwrap();
+        machine.bus.write_u8(0x1001, 0x20).unwrap();
+        // BX LR -> 0x4770 (BX R14)
+        machine.bus.write_u8(0x1002, 0x70).unwrap();
+        machine.bus.write_u8(0x1003, 0x47).unwrap();
+        
+        // Step 3: Execute MOV R0, #42 in ISR
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 42);
+        
+        // Step 4: Execute BX LR (Exception Return)
+        machine.step().unwrap();
+        
+        // 5. Verify restored state
+        assert_eq!(machine.cpu.pc, 0x2000_0002); // Back at original PC + 2
+        assert_eq!(machine.cpu.r0, 10);          // Original R0 restored!
+        assert_eq!(machine.cpu.sp, 0x2002_0000); // SP restored
+        assert_eq!(machine.cpu.r7, 20);          // R7 was untouched
+    }
 }

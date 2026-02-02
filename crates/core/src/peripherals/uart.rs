@@ -14,9 +14,10 @@ impl Uart {
     }
 
     pub fn read(&self, offset: u64) -> SimResult<u8> {
-        // Just return 0 (Ready)
-        // Real UART would check Status Register etc.
-        Ok(0)
+        match offset {
+            0x04 => Ok(0x01), // TX Ready (bit 0)
+            _ => Ok(0),
+        }
     }
 
     pub fn write(&mut self, offset: u64, value: u8) -> SimResult<()> {

@@ -23,6 +23,7 @@ pub trait Cpu {
     fn set_pc(&mut self, val: u32);
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
+    fn set_exception_pending(&mut self, exception_num: u32);
 }
 
 /// Trait representing the system bus
@@ -81,8 +82,17 @@ impl<C: Cpu> Machine<C> {
             }
         }
         
-        // simple vector table reset (Mock)
-        // Real Cortex-M: Read SP from 0x0, PC from 0x4
+        self.reset()?;
+        
+        // Fallback if vector table is missing/zero
+        if self.cpu.get_pc() == 0 {
+            self.cpu.set_pc(image.entry_point as u32);
+        }
+        
+        Ok(())
+    }
+
+    pub fn reset(&mut self) -> SimResult<()> {
         self.cpu.reset();
         
         if let Ok(sp) = self.bus.read_u32(0x0000_0000) {
@@ -90,15 +100,21 @@ impl<C: Cpu> Machine<C> {
         }
         if let Ok(pc) = self.bus.read_u32(0x0000_0004) {
              self.cpu.set_pc(pc);
-        } else {
-            // Fallback to entry point from ELF if raw binary load failed mostly
-            self.cpu.set_pc(image.entry_point as u32);
         }
         
         Ok(())
     }
     
     pub fn step(&mut self) -> SimResult<()> {
-        self.cpu.step(&mut self.bus)
+        let res = self.cpu.step(&mut self.bus);
+        
+        // Propagate peripherals
+        if self.bus.systick.tick() {
+            // SysTick Interrupt Triggered! (Exception 15)
+            self.cpu.set_exception_pending(15);
+            tracing::debug!("SysTick Exception Pend");
+        }
+        
+        res
     }
 }
