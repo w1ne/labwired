@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD pipelines via GitHub Actions.
 - Dockerfile for portable testing.
 
+## [0.3.0] - 2026-02-02
+
+### Added
+- **ISA**: Completing critical instruction set gaps for professional firmware simulation:
+    - **32-bit Support**: Implemented 32-bit instruction reassembly logic in CPU fetch loop.
+    - **Advanced Data**: Added `MOVW` & `MOVT` for 32-bit immediate loading (enabling peripheral addressing).
+    - **Control Flow**: Robust 24-bit Branch with Link (`BL`) reassembly and execution.
+    - **Core Support**: Expanded `MOV` & `CMP` to support high registers (R8-R15).
+    - **Byte Access**: Implemented `STRB` & `LDRB` for character and buffer handling.
+- **Milestone**: Successfully achieved "Hello, LabWired!" simulation output via UART peripheral.
+
+### Fixed
+- **ISA**: Corrected `MOV` (High register) decoding logic.
+- **Simulation**: Fixed incorrect immediate reassembly order for `MOVW/MOVT` instructions.
+
 ## [0.2.0] - 2026-02-02
 
 ### Added

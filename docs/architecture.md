@@ -61,15 +61,17 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.2.0 - MVP)**:
-- **Control Flow**: `B <offset>`, `BL` (Branch Link), `BX` (Branch Exchange).
+**Supported Instructions (v0.2.0)**:
+- **Control Flow**: `B <offset>`, `Bcc <cond, offset>` (Conditional), `BL` (Branch Link), `BX` (Branch Exchange).
 - **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`.
 - **Logic**: `AND`, `ORR`, `EOR`.
+- **Shifts**: `LSL`, `LSR`, `ASR` (Immediate).
 - **Memory**:
     - `LDR`/`STR` (Immediate Offset)
     - `LDR` (Literal / PC-Relative)
+    - `LDR`/`STR` (SP-Relative)
     - `PUSH`/`POP` (Stack Operations)
-- **NOP**
+- **Other**: `NOP`
 
 ### 2. `sim-loader`
 Handles binary parsing.
