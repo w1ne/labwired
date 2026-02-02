@@ -30,6 +30,10 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] Implement basic Thumb-2 Decoder (`MOV`, `B`)
 - [x] Verify verification with `tests/dummy.elf`
 
-### Phase 5: Verification
-- [ ] Integration tests using a dummy ELF (or just a binary file)
-- [ ] CI pipeline
+### Phase 5: Verification (Completed)
+- [x] Integration tests using a dummy ELF (or just a binary file)
+- [x] CI pipeline
+
+### Phase 6: Infrastructure Portability (Completed)
+- [x] Dockerfile for testing
+- [x] Docker-based verification
