@@ -69,15 +69,24 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] UART Peripheral
     - **Verified**: Mapped to `0x4000_C000`, writes to stdout.
 
-## Iteration 3: Firmware Support (Planned)
-- [ ] Implement Stack Operations
-    - `PUSH`, `POP`
-- [ ] Implement Control Flow
-    - `BL` (Branch Link), `BX` (Branch Exchange)
-- [ ] Implement PC-Relative Load
-    - `LDR` (Literal)
-- [ ] Firmware Project
-    - Create `crates/firmware` using `cortex-m-rt`.
-    - Implement "Hello World" application.
-- [ ] End-to-End Verification
-    - Run compiled firmware in simulator.
+## Iteration 3: Firmware Support (Completed)
+- [x] Implement Stack Operations
+    - **Verified**: `PUSH`, `POP` implemented and tested.
+- [x] Implement Control Flow
+    - **Verified**: `BL`, `BX` and `Bcc` implemented.
+- [x] Implement PC-Relative Load
+    - **Verified**: `LDR` (Literal) handles constant pools.
+- [x] Firmware Project
+    - **Verified**: `crates/firmware` builds and runs via correctly configured `link.x`.
+- [x] End-to-End Verification
+    - **Verified**: Firmware boots and executes in simulator.
+
+## Iteration 4: Advanced Core Support (Planned)
+- [ ] Implement High Register Operations
+    - `MOV` (register), `CMP` (register) supporting registers R8-R15.
+- [ ] Implement Byte-level Memory Access
+    - `LDRB`, `STRB` for strings and buffer initialization.
+- [ ] Refine 32-bit Instruction Handling
+    - Dedicated reassembly logic for `BL` and potentially other 32-bit Thumb instructions.
+- [ ] Peripheral Expansion
+    - Expand UART mocked behavior and add basic Timer stub.
