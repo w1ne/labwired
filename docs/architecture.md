@@ -9,38 +9,60 @@ graph TD
     CLI[sim-cli] --> Loader[sim-loader]
     CLI --> Core[sim-core]
     Loader --> Core
+    
+    subgraph Core [sim-core]
+        CPU[Cortex-M CPU]
+        Bus[System Bus]
+        Dec[Decoder]
+        Mem[Linear Memory]
+        
+        CPU --> Dec
+        CPU --> Bus
+        Bus --> Mem
+    end
 ```
 
 ## Component Definitions
 
-### `sim-core`
-The heart of the emulation. It must be `no_std` compatible (eventually) or at least highly portable to allow for Wasm compilation (for the web version).
+### 1. `sim-core`
+The execution engine. Designed to be `no_std` compatible.
 
-- **Traits**:
-    - `Cpu`: Interface for processor execution (step, reset, interrupt).
-    - `Bus`: Interface for memory map routing.
-    - `Peripheral`: Interface for memory-mapped IO (read/write).
-- **Modules**:
-    - `Decoder`: Thumb-2 instruction decoding logic (e.g. `MOV`, `B`).
-- **Structs**:
-    - `Machine`: Container for CPU + Bus.
+#### **Memory Model**
+The system uses a `SystemBus` that routes memory accesses based on the address map:
+- **Flash Memory**: `0x0000_0000` (Read-Only via Bus, writable by Loader) - Default 1MB.
+- **RAM**: `0x2000_0000` (Read/Write) - Default 128KB.
 
-### `sim-loader`
-Handles parsing of binary formats.
+The underlying storage is `LinearMemory`, a flat `Vec<u8>` optimized for direct access.
 
-- **Responsibilities**:
-    - Read ELF / Hex files.
-    - Extract loadable segments.
-    - Extract entry point.
-    - Return a `ProgramImage` struct compatible with `sim-core`.
+#### **CPU (Cortex-M Stub)**
+Represents the processor state.
+- **Registers**:
+    - `R0-R12`: General Purpose
+    - `SP (R13)`: Stack Pointer
+    - `LR (R14)`: Link Register
+    - `PC (R15)`: Program Counter
+    - `xPSR`: Program Status Register
+- **Execution Cycle**:
+    1.  **Fetch**: Read 16-bit Opcode from `PC` via `Bus`.
+    2.  **Decode**: Translate Opcode into `Instruction` enum via `Decoder`.
+    3.  **Execute**: Update PC/Registers based on `Instruction`.
 
-### `sim-cli`
-The host runner.
+#### **Decoder (Thumb-2)**
+A stateless module confirming to ARMv7-M Thumb-2 encoding.
+**Supported Instructions (v0.1.0)**:
+- `NOP`: No Operation (`0xBF00`)
+- `MOV Rd, #imm8`: Move 8-bit immediate to register (`0x2xxx`)
+- `B <offset>`: Unconditional Branch (`0xE...`)
 
-- **Responsibilities**:
-    - Parse command line args.
-    - Initialize Logging (`tracing`).
-    - Load the file using `sim-loader`.
-    - Instantiate the `Machine` from `sim-core`.
-    - Run the simulation loop.
-    - Handle User Input / Signals.
+### 2. `sim-loader`
+Handles binary parsing.
+- Uses `goblin` to parse ELF files.
+- Extracts `PT_LOAD` segments.
+- Produces a `ProgramImage` containing segments and the Entry Point.
+
+### 3. `sim-cli`
+The host runner and entry point.
+- **Initialization**: Sets up `tracing` and signal handling.
+- **Loading**: Loads ELF into `Machine` memory (mapping segments to Flash/RAM).
+- **Simulation**: Runs the `Machine::step()` loop.
+
