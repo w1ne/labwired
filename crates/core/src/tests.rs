@@ -119,4 +119,111 @@ mod tests {
         // ensuring it runs without MemoryViolation is enough.
         machine.step().unwrap();
     }
+
+    #[test]
+    fn test_cpu_execute_sp_rel() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        // Setup Stack Pointer
+        let stack_top = 0x2000_1000;
+        machine.cpu.sp = stack_top;
+        
+        // 1. STR R0, [SP, #4]
+        // R0 = 0xCAFEBABE
+        machine.cpu.r0 = 0xCAFEBABE;
+        
+        // Opcode: 1001 0 000 00000001 (STR R0, [SP, 4]) -> 0x9001
+        machine.bus.write_u8(base_addr, 0x01).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x90).unwrap();
+        
+        machine.step().unwrap();
+        
+        // Verify Memory at SP+4
+        let val = machine.bus.read_u32((stack_top + 4) as u64).unwrap();
+        assert_eq!(val, 0xCAFEBABE);
+        
+        // 2. LDR R1, [SP, #4]
+        // Opcode: 1001 1 001 00000001 (LDR R1, [SP, 4]) -> 0x9901
+        machine.bus.write_u8(base_addr+2, 0x01).unwrap();
+        machine.bus.write_u8(base_addr+3, 0x99).unwrap();
+        
+        machine.step().unwrap();
+        
+        assert_eq!(machine.cpu.r1, 0xCAFEBABE);
+    }
+
+    #[test]
+    fn test_cpu_execute_cond_branch() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        // 1. CMP R0, #0 -> Z=1
+        // MOV R0, #0
+        machine.cpu.r0 = 0;
+        // CMP R0, #0 -> 0x2800 (0010 1000 0000 0000)
+        
+        // Manual store of CMP R0, #0
+        machine.bus.write_u8(base_addr, 0x00).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x28).unwrap();
+        
+        machine.step().unwrap();
+        
+        // Check Z flag in XPSR (Bit 30)
+        assert_eq!(machine.cpu.xpsr & (1 << 30), 1 << 30);
+        
+        // 2. BEQ +4 (If Z=1, Branch)
+        // Encoding: 0xD002 (Cond=0 EQ, Offset=4)
+        machine.bus.write_u8(base_addr+2, 0x02).unwrap();
+        machine.bus.write_u8(base_addr+3, 0xD0).unwrap();
+        
+        // Target should be Base + 2 + 4 + 4 = Base + 10 (Wait)
+        // PC during execution is (Base+2). Pipeline PC = (Base+2) + 4.
+        // Target = PC + 4 + offset?
+        // Thumb Bcc: Target = PC + 4 + (imm8 << 1)
+        // My decoder: offset = imm8 << 1 = 4.
+        // CPU logic: target = pc + 4 + offset.
+        // Wait, standard: Target = PC + 4 + (sign_extended(imm8) << 1)
+        // If my decoder returns offset=4, and logic is pc+4+offset => pc+8.
+        // Let's verify standard.
+        // "Branch target address = PC + 4 + (SignExtended(imm8) << 1)"
+        // Correct.
+        
+        machine.step().unwrap();
+        
+        // PC was 0x2000_0002.
+        // PC+4 = 0x2000_0006.
+        // Offset = 4.
+        // Target = 0x2000_000A.
+        
+        assert_eq!(machine.cpu.pc, 0x2000_000A);
+    }
+
+    #[test]
+    fn test_cpu_execute_shifts() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        // LSLS R0, R1, #4
+        machine.cpu.r1 = 0x0000_0001;
+        // 0x0110 -> (000 00 00100 001 000) ? 
+        // 00000 00100 001 000 -> 0x0108
+        machine.bus.write_u8(base_addr, 0x08).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x01).unwrap();
+        
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 0x10);
+        
+        // LSRS R2, R3, #2
+        machine.cpu.r3 = 0x10;
+        // 00001 00010 011 010 -> 0x089A
+        machine.bus.write_u8(base_addr+2, 0x9A).unwrap();
+        machine.bus.write_u8(base_addr+3, 0x08).unwrap();
+        
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r2, 0x04);
+    }
 }
