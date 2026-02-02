@@ -21,6 +21,7 @@ pub struct CortexM {
     pub pc: u32, // R15
     pub xpsr: u32,
     pub pending_exceptions: u32, // Bitmask
+    pub primask: bool,           // Interrupt mask (true = disabled)
 }
 
 impl CortexM {
@@ -228,6 +229,19 @@ impl Cpu for CortexM {
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
             },
+            Instruction::AddSp { imm } => {
+                let sp = self.read_reg(13).wrapping_add(imm as u32);
+                self.write_reg(13, sp);
+            },
+            Instruction::SubSp { imm } => {
+                let sp = self.read_reg(13).wrapping_sub(imm as u32);
+                self.write_reg(13, sp);
+            },
+            Instruction::AddRegHigh { rd, rm } => {
+                let val1 = self.read_reg(rd);
+                let val2 = self.read_reg(rm);
+                self.write_reg(rd, val1.wrapping_add(val2));
+            },
             Instruction::CmpImm { rn, imm } => {
                 let op1 = self.read_reg(rn);
                 let (res, c, v) = sub_with_flags(op1, imm as u32);
@@ -263,6 +277,13 @@ impl Cpu for CortexM {
                 let res = !self.read_reg(rm);
                 self.write_reg(rd, res);
                 self.update_nz(res);
+            },
+            
+            Instruction::Cpsie => {
+                self.primask = false;
+            },
+            Instruction::Cpsid => {
+                self.primask = true;
             },
             
             // Shifts

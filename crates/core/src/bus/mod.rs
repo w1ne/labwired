@@ -98,6 +98,18 @@ impl SystemBus {
         self.write_u8(addr + 3, ((value >> 24) & 0xFF) as u8)?;
         Ok(())
     }
+
+    pub fn read_u16(&self, addr: u64) -> SimResult<u16> {
+        let b0 = self.read_u8(addr)? as u16;
+        let b1 = self.read_u8(addr + 1)? as u16;
+        Ok(b0 | (b1 << 8))
+    }
+
+    pub fn write_u16(&mut self, addr: u64, value: u16) -> SimResult<()> {
+        self.write_u8(addr, (value & 0xFF) as u8)?;
+        self.write_u8(addr + 1, ((value >> 8) & 0xFF) as u8)?;
+        Ok(())
+    }
 }
 
 impl crate::Bus for SystemBus {

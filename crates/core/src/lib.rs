@@ -61,6 +61,12 @@ pub trait Bus {
         self.write_u8(addr + 3, ((value >> 24) & 0xFF) as u8)?;
         Ok(())
     }
+
+    fn write_u16(&mut self, addr: u64, value: u16) -> SimResult<()> {
+        self.write_u8(addr, (value & 0xFF) as u8)?;
+        self.write_u8(addr + 1, ((value >> 8) & 0xFF) as u8)?;
+        Ok(())
+    }
 }
 
 pub struct Machine<C: Cpu> {

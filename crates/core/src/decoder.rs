@@ -23,6 +23,12 @@ pub enum Instruction {
     Movw { rd: u8, imm: u16 },         // MOVW Rd, #imm16
     Movt { rd: u8, imm: u16 },         // MOVT Rd, #imm16
     
+    AddSp { imm: u16 },                // ADD SP, SP, #imm
+    SubSp { imm: u16 },                // SUB SP, SP, #imm
+    AddRegHigh { rd: u8, rm: u8 },      // ADD Rd, Rm (at least one high register)
+    Cpsie,                             // CPSIE i
+    Cpsid,                             // CPSID i
+    
     And { rd: u8, rm: u8 },             // AND Rd, Rm
     Orr { rd: u8, rm: u8 },             // ORR Rd, Rm
     Eor { rd: u8, rm: u8 },             // EOR Rd, Rm
@@ -126,6 +132,12 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
     if (opcode & 0xFC00) == 0x4400 {
         let op = (opcode >> 8) & 0x3;
         match op {
+            0 => {
+                // ADD (register) T2 (High registers)
+                let rd = (((opcode >> 4) & 0x8) | (opcode & 0x7)) as u8;
+                let rm = ((opcode >> 3) & 0xF) as u8;
+                return Instruction::AddRegHigh { rd, rm };
+            }
             1 => {
                 // CMP (register) T2 (High registers)
                 let n = ((opcode >> 7) & 0x1) << 3;
@@ -246,6 +258,28 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
     // 1111 1... (0xF800 mask 0xF800)
     if (opcode & 0xF000) == 0xF000 {
          return Instruction::Prefix32(opcode);
+    }
+    
+    // ADD/SUB SP (T1): 1011 0000 x iii iiii
+    if (opcode & 0xFF00) == 0xB000 {
+        let is_sub = (opcode & 0x0080) != 0;
+        let imm7 = (opcode & 0x7F) as u16;
+        let imm = imm7 << 2;
+        if is_sub {
+            return Instruction::SubSp { imm };
+        } else {
+            return Instruction::AddSp { imm };
+        }
+    }
+
+    // CPS (T1): 1011 0110 011 effect 0 interrupt_flags (0xB660 mask 0xFFE0)
+    if (opcode & 0xFFEF) == 0xB662 { // Matches B662 or B672 (ignoring bit 4)
+        let disable = (opcode & 0x0010) != 0;
+        if disable {
+             return Instruction::Cpsid;
+        } else {
+             return Instruction::Cpsie;
+        }
     }
     
     // NOP: 1011 1111 0000 0000 -> 0xBF00
