@@ -2,6 +2,7 @@ pub mod cpu;
 pub mod memory;
 pub mod bus;
 pub mod decoder;
+pub mod peripherals;
 
 mod tests;
 
@@ -19,6 +20,9 @@ pub type SimResult<T> = Result<T, SimulationError>;
 pub trait Cpu {
     fn reset(&mut self);
     fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()>;
+    fn set_pc(&mut self, val: u32);
+    fn get_pc(&self) -> u32;
+    fn set_sp(&mut self, val: u32);
 }
 
 /// Trait representing the system bus
@@ -40,21 +44,31 @@ pub trait Bus {
         let b3 = self.read_u8(addr + 3)? as u32;
         Ok(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24))
     }
+
+    fn write_u32(&mut self, addr: u64, value: u32) -> SimResult<()> {
+        self.write_u8(addr, (value & 0xFF) as u8)?;
+        self.write_u8(addr + 1, ((value >> 8) & 0xFF) as u8)?;
+        self.write_u8(addr + 2, ((value >> 16) & 0xFF) as u8)?;
+        self.write_u8(addr + 3, ((value >> 24) & 0xFF) as u8)?;
+        Ok(())
+    }
 }
 
-pub struct Machine {
-    pub cpu: cpu::CortexM,
+pub struct Machine<C: Cpu> {
+    pub cpu: C,
     pub bus: bus::SystemBus,
 }
 
-impl Machine {
+impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
         Self {
-            cpu: cpu::CortexM::new(),
+            cpu: C::default(),
             bus: bus::SystemBus::new(1024 * 1024, 128 * 1024), // 1MB Flash, 128KB RAM mock
         }
     }
-    
+}
+
+impl<C: Cpu> Machine<C> {
     pub fn load_firmware(&mut self, image: &memory::ProgramImage) -> SimResult<()> {
         for segment in &image.segments {
             // Try loading into Flash first
@@ -69,14 +83,16 @@ impl Machine {
         
         // simple vector table reset (Mock)
         // Real Cortex-M: Read SP from 0x0, PC from 0x4
+        self.cpu.reset();
+        
         if let Ok(sp) = self.bus.read_u32(0x0000_0000) {
-            self.cpu.sp = sp;
+            self.cpu.set_sp(sp);
         }
         if let Ok(pc) = self.bus.read_u32(0x0000_0004) {
-             self.cpu.pc = pc;
+             self.cpu.set_pc(pc);
         } else {
             // Fallback to entry point from ELF if raw binary load failed mostly
-            self.cpu.pc = image.entry_point as u32;
+            self.cpu.set_pc(image.entry_point as u32);
         }
         
         Ok(())

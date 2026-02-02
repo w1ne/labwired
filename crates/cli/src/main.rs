@@ -22,14 +22,14 @@ fn main() -> anyhow::Result<()> {
     info!("Firmware Loaded Successfully!");
     info!("Entry Point: {:#x}", program.entry_point);
     
-    let mut machine = labwired_core::Machine::new();
+    let mut machine: labwired_core::Machine<labwired_core::cpu::CortexM> = labwired_core::Machine::new();
     machine.load_firmware(&program).expect("Failed to load firmware into memory");
     
     info!("Starting Simulation...");
     info!("Initial PC: {:#x}, SP: {:#x}", machine.cpu.pc, machine.cpu.sp);
     
-    // Run for 10 steps as a demo
-    for i in 0..10 {
+    // Run for 20000 steps to allow boot and execution
+    for i in 0..20000 {
         match machine.step() {
             Ok(_) => {
                 // trace logged in step

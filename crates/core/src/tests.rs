@@ -13,7 +13,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_mov() {
-        let mut machine = Machine::new();
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
         // Use RAM address because Flash via Bus is read-only
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
@@ -32,7 +32,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_branch() {
-        let mut machine = Machine::new();
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
         
@@ -57,5 +57,66 @@ mod tests {
         // So valid target is 0x2000_0008.
         
         assert_eq!(machine.cpu.pc, (base_addr + 8) as u32);
+    }
+    #[test]
+    fn test_cpu_execute_ldr_str() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        // 1. STR R0, [R1, #0]
+        // R0 = 0xDEADBEEF
+        // R1 = 0x2000_0010 (Target RAM)
+        machine.cpu.r0 = 0xDEADBEEF;
+        machine.cpu.r1 = 0x2000_0010;
+        
+        // Opcode STR R0, [R1, #0] -> 0x6008
+        // 0110 0 00000 001 000
+        machine.bus.write_u8(base_addr, 0x08).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x60).unwrap();
+        
+        machine.step().unwrap();
+        
+        // precise verify RAM
+        let val = machine.bus.read_u32(0x2000_0010).unwrap();
+        assert_eq!(val, 0xDEADBEEF);
+        
+        // 2. LDR R2, [R1, #0]
+        // Should load 0xDEADBEEF into R2
+        // Opcode LDR R2, [R1, #0] -> 0x680A
+        // 0110 1 00000 001 010
+        machine.bus.write_u8(base_addr+2, 0x0A).unwrap();
+        machine.bus.write_u8(base_addr+3, 0x68).unwrap();
+        
+        machine.step().unwrap();
+        
+        assert_eq!(machine.cpu.r2, 0xDEADBEEF);
+    }
+
+    #[test]
+    fn test_uart_write() {
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        // Base PC = RAM
+        let base_addr: u64 = 0x2000_0000;
+        machine.cpu.pc = base_addr as u32;
+        
+        // Code:
+        // MOV R0, #72 ('H')
+        // STR R0, [R1] (where R1 points to UART)
+        
+        // Manual setup for simplicity
+        machine.cpu.r0 = 72; // 'H'
+        machine.cpu.r1 = 0x4000_C000;
+        
+        // STR R0, [R1, #0] -> 0x6008
+        // 0110 0 00000 001 000
+        machine.bus.write_u8(base_addr, 0x08).unwrap();
+        machine.bus.write_u8(base_addr+1, 0x60).unwrap();
+        
+        // Capture stdout? Rust test harness captures it.
+        // We mainly verify it doesn't crash.
+        // Ideally we would mock stdout, but for this level of sim, 
+        // ensuring it runs without MemoryViolation is enough.
+        machine.step().unwrap();
     }
 }

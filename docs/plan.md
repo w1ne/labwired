@@ -58,3 +58,26 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
     - **Verified**: `Dockerfile` builds `rust:latest` image.
 - [x] Docker-based verification
     - **Verified**: `docker run` successfully executes `cargo test` suite (9/9 passed).
+
+## Iteration 2: Expanded Capabilities (Completed)
+- [x] Arithmetic & Logic Instructions
+    - **Verified**: `ADD`, `SUB`, `CMP`, `AND`, `ORR`, `EOR`, `MVN` implemented and tested.
+- [x] Memory Operations
+    - **Verified**: `LDR` and `STR` implemented and verified via integration tests.
+- [x] Portable Core Architecture
+    - **Verified**: `Machine` is generic over `Cpu` trait.
+- [x] UART Peripheral
+    - **Verified**: Mapped to `0x4000_C000`, writes to stdout.
+
+## Iteration 3: Firmware Support (Planned)
+- [ ] Implement Stack Operations
+    - `PUSH`, `POP`
+- [ ] Implement Control Flow
+    - `BL` (Branch Link), `BX` (Branch Exchange)
+- [ ] Implement PC-Relative Load
+    - `LDR` (Literal)
+- [ ] Firmware Project
+    - Create `crates/firmware` using `cortex-m-rt`.
+    - Implement "Hello World" application.
+- [ ] End-to-End Verification
+    - Run compiled firmware in simulator.

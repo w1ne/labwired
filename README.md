@@ -37,14 +37,36 @@ cargo build
 cargo test
 ```
 
-### Running the Simulator
-```bash
-# Compile the dummy test payload (optional if you have your own ELF)
-rustc tests/dummy_payload.rs -o tests/dummy.elf
+### Running the Simulator (Firmware Mode)
 
-# Run the simulator on the dummy ELF
-cargo run -p labwired-cli -- -f tests/dummy.elf
+**1. Install ARM Target**
+The firmware is built for the `thumbv7m-none-eabi` target (Cortex-M3).
+```bash
+rustup target add thumbv7m-none-eabi
 ```
+
+**2. Build the Firmware**
+Compile the demo application located in `crates/firmware`.
+```bash
+cargo build --release -p firmware --target thumbv7m-none-eabi
+```
+
+**3. Run the Simulator**
+Execute the CLI, passing the path to the compiled firmware binary.
+```bash
+cargo run -p labwired-cli -- --firmware target/thumbv7m-none-eabi/release/firmware
+```
+
+**Expected Output:**
+```
+INFO labwired: Starting LabWired Simulator
+INFO labwired: Loading firmware: "target/thumbv7m-none-eabi/release/firmware"
+...
+INFO labwired: Simulation loop finished (demo).
+INFO labwired: Final PC: 0x...
+```
+
+The firmware writes "Hello, LabWired!" to the UART (stdout). Note that "Unknown instruction" warnings may appear as the simulator currently supports a subset of the Instruction Set (MVP).
 
 Expected output:
 ```

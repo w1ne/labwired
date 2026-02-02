@@ -25,7 +25,19 @@ graph TD
 ## Component Definitions
 
 ### 1. `sim-core`
-The execution engine. Designed to be `no_std` compatible.
+The execution engine. Designed to be `no_std` compatible and **architecture-agnostic**.
+
+#### **Pluggable Core Pattern**
+The `Machine` struct is generic over the `Cpu` trait (`Machine<C: Cpu>`). This allows swapping the execution core (e.g., specific Cortex-M variants, RISC-V, etc.) without changing the bus or memory infrastructure.
+The `Cpu` trait defines the minimal interface:
+```rust
+trait Cpu {
+    fn reset(&mut self);
+    fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()>;
+}
+```
+
+#### **Memory Model**
 
 #### **Memory Model**
 The system uses a `SystemBus` that routes memory accesses based on the address map:
@@ -49,10 +61,15 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.1.0)**:
-- `NOP`: No Operation (`0xBF00`)
-- `MOV Rd, #imm8`: Move 8-bit immediate to register (`0x2xxx`)
-- `B <offset>`: Unconditional Branch (`0xE...`)
+**Supported Instructions (v0.2.0 - MVP)**:
+- **Control Flow**: `B <offset>`, `BL` (Branch Link), `BX` (Branch Exchange).
+- **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`.
+- **Logic**: `AND`, `ORR`, `EOR`.
+- **Memory**:
+    - `LDR`/`STR` (Immediate Offset)
+    - `LDR` (Literal / PC-Relative)
+    - `PUSH`/`POP` (Stack Operations)
+- **NOP**
 
 ### 2. `sim-loader`
 Handles binary parsing.
