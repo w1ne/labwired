@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-03
+
+### Added
+- **ISA**: Advanced instruction support for complex C/C++ firmware initialization:
+    - **Stack Manipulation**: Implemented `ADD SP, #imm` and `SUB SP, #imm` (Thumb-2 T1/T2).
+    - **High Register Arithmetic**: Extended `ADD` to support high registers (R8-R15), essential for stack frame teardown.
+    - **Interrupt Control**: Added `CPSIE` and `CPSID` for global interrupt enable/disable.
+- **CPU**: Integrated `primask` register to track and manage global interrupt masking state.
+- **Verification**: Expanded unit test suite and verified full `cortex-m-rt` boot flow compatibility.
+
+### Fixed
+- **Decoder**: Resolved opcode shadowing for `ADD` (High Register) instructions.
+- **Firmware**: Updated UART1 addressing in firmware to align with STM32F103 standard descriptor.
+
 ## [0.4.0] - 2026-02-02
 
 ### Added
