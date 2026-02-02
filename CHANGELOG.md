@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-02
+
+### Added
+- **System**: Declarative hardware configuration via **System Descriptors**:
+    - **Chip Descriptors**: Define SoC architecture (Flash/RAM mapping, Peripheral offsets).
+    - **System Manifest**: Describe board-level wiring and external component stubs.
+- **Peripherals**: 
+    - Full **SysTick** timer implementation (`0xE000_E010`).
+    - **StubPeripheral** for functional sensor and device modeling.
+- **Core**: 
+    - **Vector Table Boot**: Automatic loading of initial SP and PC from address `0x0`.
+    - **Exception Lifecycle**: Architectural stacking and unstacking for hardware interrupts.
+    - **Dynamic Bus**: Refactored `SystemBus` to support pluggable, manifest-defined components.
+- **Crates**: New `labwired-config` crate for YAML-based hardware definitions.
+
+### Changed
+- CLI now supports `--system <path>` to load custom hardware configurations.
+- Peripheral interaction unified under the `Peripheral` trait.
+
 ## [0.1.0] - 2026-02-02
 
 ### Added
