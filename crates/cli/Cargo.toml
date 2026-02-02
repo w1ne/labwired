@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 labwired-core = { path = "../core" }
 labwired-loader = { path = "../loader" }
+labwired-config = { path = "../config" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

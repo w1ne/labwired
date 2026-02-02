@@ -10,3 +10,5 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 bitflags = { workspace = true }
+labwired-config = { path = "../config" }
+anyhow = { workspace = true }

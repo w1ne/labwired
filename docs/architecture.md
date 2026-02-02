@@ -61,17 +61,21 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.2.0)**:
-- **Control Flow**: `B <offset>`, `Bcc <cond, offset>` (Conditional), `BL` (Branch Link), `BX` (Branch Exchange).
-- **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`.
+**Supported Instructions (v0.3.0)**:
+- **Control Flow**: `B <offset>`, `Bcc <cond, offset>`, `BL` (32-bit), `BX`.
+- **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`, `MOVW` (32-bit), `MOVT` (32-bit).
 - **Logic**: `AND`, `ORR`, `EOR`.
 - **Shifts**: `LSL`, `LSR`, `ASR` (Immediate).
 - **Memory**:
-    - `LDR`/`STR` (Immediate Offset)
+    - `LDR`/`STR` (Immediate Offset / Word)
+    - `LDRB`/`STRB` (Immediate Offset / Byte)
     - `LDR` (Literal / PC-Relative)
     - `LDR`/`STR` (SP-Relative)
     - `PUSH`/`POP` (Stack Operations)
 - **Other**: `NOP`
+
+#### **32-bit Reassembly**
+The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.
 
 ### 2. `sim-loader`
 Handles binary parsing.

@@ -20,6 +20,7 @@ pub struct CortexM {
     pub lr: u32, // R14
     pub pc: u32, // R15
     pub xpsr: u32,
+    pub pending_exceptions: u32, // Bitmask
 }
 
 impl CortexM {
@@ -90,15 +91,80 @@ impl CortexM {
             _ => false,           // Undefined/Reserved
         }
     }
+
+    fn branch_to(&mut self, addr: u32, bus: &mut dyn Bus) -> SimResult<()> {
+        if (addr & 0xF000_0000) == 0xF000_0000 {
+            // EXC_RETURN logic
+            self.exception_return(bus)?;
+        } else {
+            self.pc = addr & !1;
+        }
+        Ok(())
+    }
+
+    fn exception_return(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
+        // Perform Unstacking
+        let frame_ptr = self.sp;
+        
+        self.r0 = bus.read_u32(frame_ptr as u64)?;
+        self.r1 = bus.read_u32((frame_ptr + 4) as u64)?;
+        self.r2 = bus.read_u32((frame_ptr + 8) as u64)?;
+        self.r3 = bus.read_u32((frame_ptr + 12) as u64)?;
+        self.r12 = bus.read_u32((frame_ptr + 16) as u64)?;
+        self.lr = bus.read_u32((frame_ptr + 20) as u64)?;
+        self.pc = bus.read_u32((frame_ptr + 24) as u64)?;
+        self.xpsr = bus.read_u32((frame_ptr + 28) as u64)?;
+        
+        self.sp = frame_ptr + 32;
+        
+        tracing::info!("Exception return to {:#x}", self.pc);
+        Ok(())
+    }
 }
 
 impl Cpu for CortexM {
     fn reset(&mut self) {
         self.pc = 0x0000_0000;
         self.sp = 0x2000_0000;
+        self.pending_exceptions = 0;
     }
 
     fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
+        // Check for pending exceptions before executing instruction
+        if self.pending_exceptions != 0 {
+            // Find highest priority exception (Simplified: highest bit)
+            let exception_num = 31 - self.pending_exceptions.leading_zeros();
+            self.pending_exceptions &= !(1 << exception_num);
+            
+            // Perform Stacking (Simplified)
+            let sp = self.sp;
+            let frame_ptr = sp.wrapping_sub(32);
+            
+            // Stack: R0, R1, R2, R3, R12, LR, PC, xPSR
+            let _ = bus.write_u32(frame_ptr as u64, self.r0);
+            let _ = bus.write_u32((frame_ptr + 4) as u64, self.r1);
+            let _ = bus.write_u32((frame_ptr + 8) as u64, self.r2);
+            let _ = bus.write_u32((frame_ptr + 12) as u64, self.r3);
+            let _ = bus.write_u32((frame_ptr + 16) as u64, self.r12);
+            let _ = bus.write_u32((frame_ptr + 20) as u64, self.lr);
+            let _ = bus.write_u32((frame_ptr + 24) as u64, self.pc);
+            let _ = bus.write_u32((frame_ptr + 28) as u64, self.xpsr);
+            
+            self.sp = frame_ptr;
+            
+            // EXC_RETURN: Thread Mode, MSP
+            self.lr = 0xFFFF_FFF9; 
+            
+            // Jump to ISR handler
+            let vector_addr = exception_num * 4;
+            if let Ok(handler) = bus.read_u32(vector_addr as u64) {
+                self.pc = handler & !1;
+                tracing::info!("Exception {} trigger, jump to {:#x}", exception_num, self.pc);
+            }
+            
+            return Ok(());
+        }
+
         // ... (existing logic)
         // Fetch 16-bit thumb instruction
         let fetch_pc = self.pc & !1;
@@ -343,11 +409,7 @@ impl Cpu for CortexM {
                 
                 if p {
                     if let Ok(val) = bus.read_u32(sp as u64) {
-                        // Pop to PC. Note: Bit 0 of PC must be set for Thumb state, usually handled by hardware or transparently.
-                        // For simulation, we just write the target address.
-                        // Ideally checking LSB is 1 for Thumb mode validity.
-                        let target = val & !1; 
-                        self.pc = target;
+                        self.branch_to(val, bus)?;
                         pc_increment = 0; // Branch taken
                     }
                     sp = sp.wrapping_add(4);
@@ -396,7 +458,7 @@ impl Cpu for CortexM {
             },
             Instruction::Bx { rm } => {
                 let target = self.read_reg(rm);
-                self.pc = target & !1; // Clear Thumb bit
+                self.branch_to(target, bus)?;
                 pc_increment = 0;
             },
             
@@ -485,6 +547,12 @@ impl Cpu for CortexM {
     
     fn set_sp(&mut self, val: u32) {
         self.sp = val;
+    }
+
+    fn set_exception_pending(&mut self, exception_num: u32) {
+        if exception_num < 32 {
+            self.pending_exceptions |= 1 << exception_num;
+        }
     }
 }
 

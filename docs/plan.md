@@ -81,12 +81,21 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] End-to-End Verification
     - **Verified**: Firmware boots and executes in simulator.
 
-## Iteration 4: Advanced Core Support (Planned)
-- [ ] Implement High Register Operations
-    - `MOV` (register), `CMP` (register) supporting registers R8-R15.
-- [ ] Implement Byte-level Memory Access
-    - `LDRB`, `STRB` for strings and buffer initialization.
-- [ ] Refine 32-bit Instruction Handling
-    - Dedicated reassembly logic for `BL` and potentially other 32-bit Thumb instructions.
-- [ ] Peripheral Expansion
-    - Expand UART mocked behavior and add basic Timer stub.
+## Iteration 4: Advanced Core Support (Completed)
+- [x] Implement High Register Operations
+    - **Verified**: `MOV` and `CMP` support R8-R15 (including SP, LR, PC).
+- [x] Implement Byte-level Memory Access
+    - **Verified**: `LDRB`, `STRB` implemented for buffer manipulation.
+- [x] Refine 32-bit Instruction Handling
+    - **Verified**: Robust 32-bit reassembly for `BL`, `MOVW`, `MOVT`.
+- [x] Milestone: "Hello, LabWired!" achieved via UART peripheral.
+
+## Iteration 5: System Services & Exception Handling (Planned)
+- [ ] Implement Vector Table Boot Logic
+    - Automatic SP/PC loading from `0x0000_0000` on reset.
+- [ ] Implement SysTick Timer
+    - Peripheral mapped to `0xE000_E010` with basic down-counting.
+- [ ] Implement Basic Exception Entry/Exit
+    - HardFault handling and PendSV stub.
+- [ ] Expand UART Input Support
+    - Enable basic mocked input for interactive firmware.

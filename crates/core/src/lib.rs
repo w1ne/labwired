@@ -23,12 +23,21 @@ pub trait Cpu {
     fn set_pc(&mut self, val: u32);
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
+    fn set_exception_pending(&mut self, exception_num: u32);
+}
+
+/// Trait representing a memory-mapped peripheral
+pub trait Peripheral: std::fmt::Debug + Send {
+    fn read(&self, offset: u64) -> SimResult<u8>;
+    fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
+    fn tick(&mut self) -> bool { false }
 }
 
 /// Trait representing the system bus
 pub trait Bus {
     fn read_u8(&self, addr: u64) -> SimResult<u8>;
     fn write_u8(&mut self, addr: u64, value: u8) -> SimResult<()>;
+    fn tick_peripherals(&mut self) -> Vec<u32>; // Returns list of pending exception numbers
     
     fn read_u16(&self, addr: u64) -> SimResult<u16> {
         let b0 = self.read_u8(addr)? as u16;
@@ -63,7 +72,7 @@ impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
         Self {
             cpu: C::default(),
-            bus: bus::SystemBus::new(1024 * 1024, 128 * 1024), // 1MB Flash, 128KB RAM mock
+            bus: bus::SystemBus::new(), 
         }
     }
 }
@@ -81,8 +90,17 @@ impl<C: Cpu> Machine<C> {
             }
         }
         
-        // simple vector table reset (Mock)
-        // Real Cortex-M: Read SP from 0x0, PC from 0x4
+        self.reset()?;
+        
+        // Fallback if vector table is missing/zero
+        if self.cpu.get_pc() == 0 {
+            self.cpu.set_pc(image.entry_point as u32);
+        }
+        
+        Ok(())
+    }
+
+    pub fn reset(&mut self) -> SimResult<()> {
         self.cpu.reset();
         
         if let Ok(sp) = self.bus.read_u32(0x0000_0000) {
@@ -90,15 +108,21 @@ impl<C: Cpu> Machine<C> {
         }
         if let Ok(pc) = self.bus.read_u32(0x0000_0004) {
              self.cpu.set_pc(pc);
-        } else {
-            // Fallback to entry point from ELF if raw binary load failed mostly
-            self.cpu.set_pc(image.entry_point as u32);
         }
         
         Ok(())
     }
     
     pub fn step(&mut self) -> SimResult<()> {
-        self.cpu.step(&mut self.bus)
+        let res = self.cpu.step(&mut self.bus);
+        
+        // Propagate peripherals
+        let interrupts = self.bus.tick_peripherals();
+        for irq in interrupts {
+            self.cpu.set_exception_pending(irq);
+            tracing::debug!("Exception {} Pend", irq);
+        }
+        
+        res
     }
 }
