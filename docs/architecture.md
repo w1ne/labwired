@@ -6,19 +6,23 @@ The system is designed as a set of decoupled Rust crates to ensure portability a
 
 ```mermaid
 graph TD
-    CLI[sim-cli] --> Loader[sim-loader]
-    CLI --> Core[sim-core]
+    CLI[labwired-cli] --> Config[labwired-config]
+    CLI --> Loader[labwired-loader]
+    CLI --> Core[labwired-core]
+    Config --> Core
     Loader --> Core
     
-    subgraph Core [sim-core]
+    subgraph Core [labwired-core]
         CPU[Cortex-M CPU]
         Bus[System Bus]
         Dec[Decoder]
         Mem[Linear Memory]
+        Periphs[Dynamic Peripherals]
         
         CPU --> Dec
         CPU --> Bus
         Bus --> Mem
+        Bus --> Periphs
     end
 ```
 
@@ -39,12 +43,20 @@ trait Cpu {
 
 #### **Memory Model**
 
-#### **Memory Model**
-The system uses a `SystemBus` that routes memory accesses based on the address map:
-- **Flash Memory**: `0x0000_0000` (Read-Only via Bus, writable by Loader) - Default 1MB.
-- **RAM**: `0x2000_0000` (Read/Write) - Default 128KB.
+#### **Dynamic Bus & Peripherals**
+The system uses a `SystemBus` that routes memory accesses dynamically based on a project manifest.
+- **Flash Memory**: Base address varies by chip. Loads ELF segments.
+- **RAM**: Base address varies by chip. Supports read/write.
+- **Peripherals**: Memory-mapped devices (UART, SysTick, Stubs) mapped to arbitrary address ranges.
 
-The underlying storage is `LinearMemory`, a flat `Vec<u8>` optimized for direct access.
+Peripherals are integrated via the `Peripheral` trait:
+```rust
+pub trait Peripheral: std::fmt::Debug + Send {
+    fn read(&self, offset: u64) -> SimResult<u8>;
+    fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
+    fn tick(&mut self) -> bool; // Returns true if interrupt is pending
+}
+```
 
 #### **CPU (Cortex-M Stub)**
 Represents the processor state.
@@ -77,15 +89,22 @@ A stateless module confirming to ARMv7-M Thumb-2 encoding.
 #### **32-bit Reassembly**
 The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.
 
-### 2. `sim-loader`
+### 2. `labwired-config`
+Handles hardware declaration and validation.
+- **Schemas**: Defines `ChipDescriptor` and `SystemManifest` (YAML).
+- **Size Parsing**: Converts human-readable strings like "128KB" to raw byte sizes.
+- **Dependency**: Used by `CLI` to initialize the `Machine` and by `Core` to map peripherals.
+
+### 3. `labwired-loader`
 Handles binary parsing.
 - Uses `goblin` to parse ELF files.
 - Extracts `PT_LOAD` segments.
 - Produces a `ProgramImage` containing segments and the Entry Point.
 
-### 3. `sim-cli`
+### 4. `labwired-cli`
 The host runner and entry point.
-- **Initialization**: Sets up `tracing` and signal handling.
-- **Loading**: Loads ELF into `Machine` memory (mapping segments to Flash/RAM).
+- **Initialization**: Parses `--firmware` and optional `--system` manifest.
+- **Configuration**: Resolves Chip Descriptors and wiring via `labwired-config`.
+- **Loading**: Loads ELF segments into the dynamically configured `SystemBus`.
 - **Simulation**: Runs the `Machine::step()` loop.
 

@@ -6,17 +6,19 @@
 LabWired is a next-generation simulation platform designed to bridge the gap between hardware dependency and software velocity. It enables developers to run, debug, and test firmware binaries without physical hardware, leveraging a portable Rust-based execution engine.
 
 **Key Features:**
-- **Standalone Runner**: No external dependencies/interpreters required.
-- **High Performance**: Native Rust implementation (`sim-core`).
+- **Declarative Configuration**: Define Chips and Boards in YAML (including memory maps and peripherals).
+- **System Services**: Full support for SysTick, Vector Table Boot, and Exception Handling.
+- **Functional Stubbing**: Mock external sensors and devices without complex emulation.
+- **High Performance**: Native Rust implementation (`labwired-core`).
 - **Cloud Ready**: Designed for headless execution in CI/CD pipelines.
-- **Extensible**: Modular architecture separating Loader, Core, and CLI.
 
 ## 🏗 Architecture
 The project is organized as a Rust Workspace:
 
 - **`crates/cli`**: The command-line interface entry point.
+- **`crates/config`**: YAML-based hardware and project descriptors.
 - **`crates/loader`**: ELF binary parsing and image generation.
-- **`crates/core`**: The execution engine (CPU, Bus, Peripherals).
+- **`crates/core`**: The execution engine (CPU, Dynamic Bus, Peripherals).
 
 See [Architecture Documentation](docs/architecture.md) for details.
 
@@ -52,27 +54,19 @@ cargo build --release -p firmware --target thumbv7m-none-eabi
 ```
 
 **3. Run the Simulator**
-Execute the CLI, passing the path to the compiled firmware binary.
+Pass the path to the firmware and the **System Manifest** defining the hardware.
 ```bash
-cargo run -p labwired-cli -- --firmware target/thumbv7m-none-eabi/release/firmware
+# Run with prototype STM32F103 configuration
+cargo run -p labwired-cli -- --firmware target/thumbv7m-none-eabi/release/firmware --system system.yaml
 ```
 
 **Expected Output:**
-```
+```text
 INFO labwired: Starting LabWired Simulator
-INFO labwired: Loading firmware: "target/thumbv7m-none-eabi/release/firmware"
-...
-INFO labwired: Simulation loop finished (demo).
-INFO labwired: Final PC: 0x...
-```
-
-The firmware writes "Hello, LabWired!" to the UART (stdout). Note that "Unknown instruction" warnings may appear as the simulator currently supports a subset of the Instruction Set (MVP).
-
-Expected output:
-```
-INFO labwired: Firmware Loaded Successfully!
-INFO labwired: Entry Point: 0x...
-INFO labwired: Starting Simulation...
+INFO labwired: Loading system manifest: "system.yaml"
+INFO labwired: Loading chip descriptor: "configs/chips/stm32f103.yaml"
+INFO labwired: Loading firmware: "..."
+Hello, LabWired!
 INFO labwired: Simulation loop finished (demo).
 ```
 

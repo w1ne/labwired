@@ -90,12 +90,26 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
     - **Verified**: Robust 32-bit reassembly for `BL`, `MOVW`, `MOVT`.
 - [x] Milestone: "Hello, LabWired!" achieved via UART peripheral.
 
-## Iteration 5: System Services & Exception Handling (Planned)
-- [ ] Implement Vector Table Boot Logic
-    - Automatic SP/PC loading from `0x0000_0000` on reset.
-- [ ] Implement SysTick Timer
-    - Peripheral mapped to `0xE000_E010` with basic down-counting.
-- [ ] Implement Basic Exception Entry/Exit
-    - HardFault handling and PendSV stub.
-- [ ] Expand UART Input Support
-    - Enable basic mocked input for interactive firmware.
+## Iteration 5: System Services & Exception Handling (Completed)
+- [x] Implement Vector Table Boot Logic
+    - **Verified**: CPU automatically loads SP/PC from 0x0 on reset.
+- [x] Implement SysTick Timer
+    - **Verified**: Standard `SYST_*` registers implemented and ticking.
+- [x] Implement Basic Exception Entry/Exit
+    - **Verified**: Stacking/Unstacking logic allows interrupt handling.
+
+## Iteration 6: Descriptor-Based Configuration (Completed)
+- [x] Implement YAML Chip Descriptors
+    - **Verified**: `configs/chips/stm32f103.yaml` defines memory mapping and peripherals.
+- [x] Implement System Manifests
+    - **Verified**: `system.yaml` allows wiring of sensors and devices.
+- [x] Dynamic SystemBus
+    - **Verified**: Bus auto-configures based on descriptor files.
+- [x] Functional Device Stubbing
+    - **Verified**: `StubPeripheral` allows modeling external hardware.
+
+## Iteration 7: Stack & Advanced Flow Control (Planned)
+- [ ] Implement `ADD SP, #imm` and `SUB SP, #imm`.
+- [ ] Implement `ADD (High Register)` for arbitrary register addition.
+- [ ] Implement `CPSIE/CPSID` for interrupt enable/disable control.
+- [ ] Milestone: Full execution of standard `cortex-m-rt` initialization without warnings.
