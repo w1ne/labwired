@@ -20,6 +20,8 @@ The heart of the emulation. It must be `no_std` compatible (eventually) or at le
     - `Cpu`: Interface for processor execution (step, reset, interrupt).
     - `Bus`: Interface for memory map routing.
     - `Peripheral`: Interface for memory-mapped IO (read/write).
+- **Modules**:
+    - `Decoder`: Thumb-2 instruction decoding logic (e.g. `MOV`, `B`).
 - **Structs**:
     - `Machine`: Container for CPU + Bus.
 

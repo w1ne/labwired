@@ -39,11 +39,19 @@ cargo test
 
 ### Running the Simulator
 ```bash
-# Run the CLI via Cargo
-cargo run -p labwired-cli -- --help
+# Compile the dummy test payload (optional if you have your own ELF)
+rustc tests/dummy_payload.rs -o tests/dummy.elf
 
-# Example usage (future)
-# cargo run -p labwired-cli -- -f firmware.elf
+# Run the simulator on the dummy ELF
+cargo run -p labwired-cli -- -f tests/dummy.elf
+```
+
+Expected output:
+```
+INFO labwired: Firmware Loaded Successfully!
+INFO labwired: Entry Point: 0x...
+INFO labwired: Starting Simulation...
+INFO labwired: Simulation loop finished (demo).
 ```
 
 ## 🤝 Development Workflow
