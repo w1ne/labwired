@@ -1,0 +1,3 @@
+[workspace]
+# Deny common bugs
+# deny = ["clippy::unwrap_used", "clippy::expect_used"] # Enable later for strictness

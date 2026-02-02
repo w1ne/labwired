@@ -1,0 +1,12 @@
+[package]
+name = "labwired-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+bitflags = { workspace = true }
