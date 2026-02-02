@@ -1,4 +1,5 @@
 use crate::{Cpu, Bus, SimResult};
+use crate::decoder::{self, Instruction};
 
 #[derive(Debug, Default)]
 pub struct CortexM {
@@ -29,22 +30,53 @@ impl CortexM {
 
 impl Cpu for CortexM {
     fn reset(&mut self) {
-        // In real Cortex-M, we'd read initial SP from 0x0000_0000 and PC from 0x0000_0004
         self.pc = 0x0000_0000;
-        self.sp = 0x2000_0000; // Mock stack pointer
+        self.sp = 0x2000_0000;
     }
 
     fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
-        // Fetch
-        let instruction_byte = bus.read_u8(self.pc as u64)?;
+        // Fetch 16-bit thumb instruction
+        // Note: PC in Thumb mode usually points to current instruction + 4 due to pipeline.
+        // For simulation, we treat PC as fetch address for now.
         
-        // Mock Decode & Execute
-        // For iteration 1, we just increment PC to simulate progress
-        // and maybe do a NOP
+        let fetch_pc = self.pc & !1;
+        let opcode = bus.read_u16(fetch_pc as u64)?;
         
-        tracing::debug!("Executing at PC={:#x}, Opcode={:#x}", self.pc, instruction_byte);
+        // Decode
+        let instruction = decoder::decode_thumb_16(opcode);
         
-        self.pc += 1; // Very wrong for ARM (instructions are 2 or 4 bytes), but okay for stub.
+        tracing::debug!("PC={:#x}, Opcode={:#04x}, Instr={:?}", self.pc, opcode, instruction);
+        
+        // Execute
+        let mut pc_increment = 2; // Default for 16-bit instruction
+        
+        match instruction {
+            Instruction::Nop => {
+                // Do nothing
+            },
+            Instruction::MovImm { rd, imm } => {
+                // R[d] = imm
+                match rd {
+                    0 => self.r0 = imm as u32,
+                    1 => self.r1 = imm as u32,
+                    2 => self.r2 = imm as u32,
+                    3 => self.r3 = imm as u32,
+                    _ => tracing::warn!("Unimplemented register R{}", rd),
+                }
+            },
+            Instruction::Branch { offset } => {
+                 // PC = PC + 4 + offset
+                 // Target = (CurrentPC + 4) + offset
+                 let target = (self.pc as i32 + 4 + offset) as u32;
+                 self.pc = target;
+                 pc_increment = 0; // Don't increment after branch
+            },
+            Instruction::Unknown(_) => {
+                tracing::warn!("Unknown instruction at {:#x}", self.pc);
+            }
+        }
+        
+        self.pc = self.pc.wrapping_add(pc_increment);
         
         Ok(())
     }

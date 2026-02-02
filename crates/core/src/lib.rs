@@ -1,6 +1,9 @@
 pub mod cpu;
 pub mod memory;
 pub mod bus;
+pub mod decoder;
+
+mod tests;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimulationError {
@@ -23,6 +26,13 @@ pub trait Bus {
     fn read_u8(&self, addr: u64) -> SimResult<u8>;
     fn write_u8(&mut self, addr: u64, value: u8) -> SimResult<()>;
     
+    fn read_u16(&self, addr: u64) -> SimResult<u16> {
+        let b0 = self.read_u8(addr)? as u16;
+        let b1 = self.read_u8(addr + 1)? as u16;
+        // Little Endian
+        Ok(b0 | (b1 << 8))
+    }
+
     fn read_u32(&self, addr: u64) -> SimResult<u32> {
         let b0 = self.read_u8(addr)? as u32;
         let b1 = self.read_u8(addr + 1)? as u32;
