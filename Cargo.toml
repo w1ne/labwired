@@ -5,6 +5,7 @@ members = [
     "crates/loader",
     "crates/cli", "crates/firmware",
 ]
+default-members = ["crates/cli", "crates/core", "crates/loader"]
 
 [workspace.package]
 version = "0.2.0"
