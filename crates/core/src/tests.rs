@@ -2,6 +2,7 @@
 mod tests {
     use crate::decoder::{self, Instruction};
     use crate::{Machine, SimResult, Bus};
+    use crate::cpu::CortexM;
 
     #[test]
     fn test_decoder_mov() {
@@ -390,5 +391,43 @@ mod tests {
         assert_eq!(machine.cpu.r0, 10);          // Original R0 restored!
         assert_eq!(machine.cpu.sp, 0x2002_0000); // SP restored
         assert_eq!(machine.cpu.r7, 20);          // R7 was untouched
+    }
+
+    #[test]
+    fn test_iteration_7_instructions() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        machine.cpu.sp = 0x2000_1000;
+        
+        // 1. ADD SP, #12 (3 * 4) -> 0xB003
+        machine.bus.write_u16(0, 0xB003).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.sp, 0x2000_100C);
+        
+        // 2. SUB SP, #16 (4 * 4) -> 0xB084
+        machine.cpu.pc = 2;
+        machine.bus.write_u16(2, 0xB084).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.sp, 0x2000_0FFC);
+        
+        // 3. ADD R0, R8 (High Reg) -> 0x4440 (Rd=R0, Rm=R8)
+        machine.cpu.r0 = 10;
+        machine.cpu.r8 = 20;
+        machine.cpu.pc = 4;
+        machine.bus.write_u16(4, 0x4440).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 30);
+
+        // 4. CPSID i -> 0xB672
+        machine.cpu.primask = false;
+        machine.cpu.pc = 6;
+        machine.bus.write_u16(6, 0xB672).unwrap();
+        machine.step().unwrap();
+        assert!(machine.cpu.primask);
+
+        // 5. CPSIE i -> 0xB662
+        machine.cpu.pc = 8;
+        machine.bus.write_u16(8, 0xB662).unwrap();
+        machine.step().unwrap();
+        assert!(!machine.cpu.primask);
     }
 }

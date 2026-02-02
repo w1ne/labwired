@@ -4,8 +4,8 @@
 use panic_halt as _;
 use cortex_m_rt::entry;
 
-// UART Stub address in Simulator
-const UART_TX: *mut u8 = 0x4000_C000 as *mut u8;
+// UART1 address for STM32F103
+const UART_TX: *mut u8 = 0x4001_3800 as *mut u8;
 
 #[entry]
 fn main() -> ! {
