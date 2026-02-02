@@ -108,8 +108,8 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] Functional Device Stubbing
     - **Verified**: `StubPeripheral` allows modeling external hardware.
 
-## Iteration 7: Stack & Advanced Flow Control (Planned)
-- [ ] Implement `ADD SP, #imm` and `SUB SP, #imm`.
-- [ ] Implement `ADD (High Register)` for arbitrary register addition.
-- [ ] Implement `CPSIE/CPSID` for interrupt enable/disable control.
-- [ ] Milestone: Full execution of standard `cortex-m-rt` initialization without warnings.
+## Iteration 7: Stack & Advanced Flow Control (Completed)
+- [x] Implement `ADD SP, #imm` and `SUB SP, #imm`.
+- [x] Implement `ADD (High Register)` for arbitrary register addition.
+- [x] Implement `CPSIE/CPSID` for interrupt enable/disable control.
+- [x] Milestone: Full execution of standard `cortex-m-rt` initialization without warnings.

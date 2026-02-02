@@ -73,9 +73,11 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.3.0)**:
+**Supported Instructions (v0.4.0)**:
 - **Control Flow**: `B <offset>`, `Bcc <cond, offset>`, `BL` (32-bit), `BX`.
 - **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`, `MOVW` (32-bit), `MOVT` (32-bit).
+    - Includes **High Register** support for `MOV`, `CMP`, and `ADD`.
+    - Dedicated `ADD SP, #imm` and `SUB SP, #imm` forms.
 - **Logic**: `AND`, `ORR`, `EOR`.
 - **Shifts**: `LSL`, `LSR`, `ASR` (Immediate).
 - **Memory**:
@@ -84,6 +86,7 @@ A stateless module confirming to ARMv7-M Thumb-2 encoding.
     - `LDR` (Literal / PC-Relative)
     - `LDR`/`STR` (SP-Relative)
     - `PUSH`/`POP` (Stack Operations)
+- **Interrupt Control**: `CPSIE`, `CPSID` (affecting `primask`).
 - **Other**: `NOP`
 
 #### **32-bit Reassembly**
