@@ -21,11 +21,28 @@ fn main() -> anyhow::Result<()> {
     
     info!("Firmware Loaded Successfully!");
     info!("Entry Point: {:#x}", program.entry_point);
-    for (i, segment) in program.segments.iter().enumerate() {
-        info!("Segment {}: Address={:#x}, Size={} bytes", i, segment.start_addr, segment.data.len());
+    
+    let mut machine = labwired_core::Machine::new();
+    machine.load_firmware(&program).expect("Failed to load firmware into memory");
+    
+    info!("Starting Simulation...");
+    info!("Initial PC: {:#x}, SP: {:#x}", machine.cpu.pc, machine.cpu.sp);
+    
+    // Run for 10 steps as a demo
+    for i in 0..10 {
+        match machine.step() {
+            Ok(_) => {
+                // trace logged in step
+            },
+            Err(e) => {
+                info!("Simulation Error at step {}: {}", i, e);
+                break;
+            }
+        }
     }
     
-    info!("Simulation not yet implemented. Exiting.");
+    info!("Simulation loop finished (demo).");
+    info!("Final PC: {:#x}", machine.cpu.pc);
     
     Ok(())
 }
