@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::decoder::{self, Instruction};
-    use crate::{Machine, SimResult, Bus};
+    use crate::{Machine, SimResult, Bus, Cpu};
     use crate::cpu::CortexM;
 
     #[test]
@@ -429,5 +429,110 @@ mod tests {
         machine.bus.write_u16(8, 0xB662).unwrap();
         machine.step().unwrap();
         assert!(!machine.cpu.primask);
+    }
+
+    #[test]
+    fn test_iteration_8_instructions() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        
+        // 1. STRH R1, [R0, #4] -> 0x8081 (Rn=R0, Rt=R1, imm5=2 so imm=4)
+        machine.cpu.r0 = 0x2000_1000;
+        machine.cpu.r1 = 0xABCD;
+        machine.bus.write_u16(0, 0x8081).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.bus.read_u16(0x2000_1004).unwrap(), 0xABCD);
+
+        // 2. LDRH R2, [R0, #4] -> 0x8882 (Rn=R0, Rt=R2, imm5=2 so imm=4)
+        machine.cpu.pc = 2;
+        machine.bus.write_u16(2, 0x8882).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r2, 0xABCD);
+
+        // 3. STM R0!, {R1, R2} -> 0xC006 (Rn=R0, Regs=0x06 (R1,R2))
+        machine.cpu.r0 = 0x2000_2000;
+        machine.cpu.r1 = 0x11223344;
+        machine.cpu.r2 = 0x55667788;
+        machine.cpu.pc = 4;
+        machine.bus.write_u16(4, 0xC006).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.bus.read_u32(0x2000_2000).unwrap(), 0x11223344);
+        assert_eq!(machine.bus.read_u32(0x2000_2004).unwrap(), 0x55667788);
+        assert_eq!(machine.cpu.r0, 0x2000_2008); // Rn updated
+
+        // 4. LDM R0!, {R3, R4} -> 0xC818 (Rn=R0, Regs=0x18 (R3,R4))
+        // Base is 0x2000_2008 now. Let's write some data there.
+        machine.bus.write_u32(0x2000_2008, 0xAAAAAAAA).unwrap();
+        machine.bus.write_u32(0x2000_200C, 0xBBBBBBBB).unwrap();
+        machine.cpu.pc = 6;
+        machine.bus.write_u16(6, 0xC818).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r3, 0xAAAAAAAA);
+        assert_eq!(machine.cpu.r4, 0xBBBBBBBB);
+        assert_eq!(machine.cpu.r0, 0x2000_2010); // Rn updated
+
+        // 5. MULS R0, R1 -> 0x4348 (Rd=R0, Rn=R1)
+        machine.cpu.r0 = 10;
+        machine.cpu.r1 = 20;
+        machine.cpu.pc = 8;
+        machine.bus.write_u16(8, 0x4348).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 200);
+    }
+
+    #[test]
+    fn test_nvic_external_interrupt() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        
+        // IRQ 0 (Exception 16)
+        let irq_num = 16;
+        let isr_addr = 0x2000;
+        // Vector at VTOR + (16 * 4) = 0x40
+        machine.bus.write_u32(0x40, isr_addr | 1).unwrap();
+
+        // 1. Initially disabled. Peripheral ticks but nothing should happen.
+        // Mock a peripheral at 0x4000_0000 with IRQ 16
+        machine.bus.peripherals.push(crate::bus::PeripheralEntry {
+            name: "mock".to_string(),
+            base: 0x4000_0000,
+            size: 0x10,
+            irq: Some(irq_num),
+            dev: Box::new(crate::peripherals::stub::StubPeripheral::new(0)),
+        });
+        // (Note: StubPeripheral::tick returns false. I should use a more active one or just pend manually)
+        
+        // Manually pend it in NVIC ISPR
+        machine.bus.write_u8(0xE000E100 + 0x100, 1).unwrap(); // ISPR0 bit 0
+        machine.step().unwrap(); 
+        assert_ne!(machine.cpu.pc, isr_addr); // Should NOT have jumped (disabled)
+        
+        // 2. Enable in NVIC ISER
+        machine.bus.write_u8(0xE000E100, 1).unwrap(); // ISER0 bit 0
+        machine.step().unwrap(); // Step instruction, collect interrupt
+        machine.step().unwrap(); // Handle interrupt
+        assert_eq!(machine.cpu.pc, isr_addr); // Should JUMP now
+    }
+
+    #[test]
+    fn test_vtor_relocation() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        
+        // Relocate VTOR to RAM at 0x2000_0000
+        machine.bus.write_u32(0xE000ED08, 0x2000_0000).unwrap();
+        
+        // Exception 15 (SysTick) at new VTOR + 0x3C = 0x2000_003C
+        let isr_addr = 0x5000;
+        machine.bus.write_u32(0x2000_003C, isr_addr | 1).unwrap();
+        
+        // Verify reset works from new VTOR
+        machine.bus.write_u32(0x2000_0000, 0x2002_0000).unwrap(); // SP
+        machine.bus.write_u32(0x2000_0004, 0x1000).unwrap();      // PC
+        machine.reset().unwrap();
+        assert_eq!(machine.cpu.pc, 0x1000);
+        assert_eq!(machine.cpu.sp, 0x2002_0000);
+
+        // Verify exception uses new VTOR
+        machine.cpu.set_exception_pending(15);
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.pc, isr_addr);
     }
 }

@@ -1,5 +1,7 @@
 use crate::{Cpu, Bus, SimResult};
 use crate::decoder::{self, Instruction};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, Default)]
 pub struct CortexM {
@@ -22,6 +24,7 @@ pub struct CortexM {
     pub xpsr: u32,
     pub pending_exceptions: u32, // Bitmask
     pub primask: bool,           // Interrupt mask (true = disabled)
+    pub vtor: Arc<AtomicU32>,    // Shared Vector Table Offset Register
 }
 
 impl CortexM {
@@ -130,6 +133,18 @@ impl Cpu for CortexM {
         self.pending_exceptions = 0;
     }
 
+    fn get_pc(&self) -> u32 { self.pc }
+    fn set_pc(&mut self, val: u32) { self.pc = val; }
+    fn set_sp(&mut self, val: u32) { self.sp = val; }
+    fn set_exception_pending(&mut self, exception_num: u32) {
+        if exception_num < 32 {
+            self.pending_exceptions |= 1 << exception_num;
+        }
+    }
+    fn get_vtor(&self) -> u32 { self.vtor.load(Ordering::SeqCst) }
+    fn set_vtor(&mut self, val: u32) { self.vtor.store(val, Ordering::SeqCst); }
+    fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>) { self.vtor = vtor; }
+
     fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
         // Check for pending exceptions before executing instruction
         if self.pending_exceptions != 0 {
@@ -157,10 +172,11 @@ impl Cpu for CortexM {
             self.lr = 0xFFFF_FFF9; 
             
             // Jump to ISR handler
-            let vector_addr = exception_num * 4;
+            let vtor = self.vtor.load(Ordering::SeqCst);
+            let vector_addr = vtor + (exception_num * 4);
             if let Ok(handler) = bus.read_u32(vector_addr as u64) {
                 self.pc = handler & !1;
-                tracing::info!("Exception {} trigger, jump to {:#x}", exception_num, self.pc);
+                tracing::info!("Exception {} trigger, jump to {:#x} (VTOR={:#x})", exception_num, self.pc, vtor);
             }
             
             return Ok(());
@@ -278,6 +294,13 @@ impl Cpu for CortexM {
                 self.write_reg(rd, res);
                 self.update_nz(res);
             },
+            Instruction::Mul { rd, rn } => {
+                let op1 = self.read_reg(rd);
+                let op2 = self.read_reg(rn);
+                let res = op1.wrapping_mul(op2);
+                self.write_reg(rd, res);
+                self.update_nz(res);
+            },
             
             Instruction::Cpsie => {
                 self.primask = false;
@@ -374,6 +397,23 @@ impl Cpu for CortexM {
                     tracing::error!("Bus Write Fault (STRB) at {:#x}", addr);
                 }
             },
+            Instruction::LdrhImm { rt, rn, imm } => {
+                let base = self.read_reg(rn);
+                let addr = base.wrapping_add(imm as u32);
+                if let Ok(val) = bus.read_u16(addr as u64) {
+                    self.write_reg(rt, val as u32);
+                } else {
+                    tracing::error!("Bus Read Fault (LDRH) at {:#x}", addr);
+                }
+            },
+            Instruction::StrhImm { rt, rn, imm } => {
+                let base = self.read_reg(rn);
+                let addr = base.wrapping_add(imm as u32);
+                let val = (self.read_reg(rt) & 0xFFFF) as u16;
+                if let Err(_) = bus.write_u16(addr as u64, val) {
+                    tracing::error!("Bus Write Fault (STRH) at {:#x}", addr);
+                }
+            },
 
             // Stack Operations
             Instruction::Push { registers, m } => {
@@ -437,6 +477,31 @@ impl Cpu for CortexM {
                 }
                 
                 self.write_reg(13, sp);
+            },
+            Instruction::Ldm { rn, registers } => {
+                let mut base = self.read_reg(rn);
+                for i in 0..=7 {
+                    if (registers & (1 << i)) != 0 {
+                        if let Ok(val) = bus.read_u32(base as u64) {
+                            self.write_reg(i, val);
+                        }
+                        base = base.wrapping_add(4);
+                    }
+                }
+                self.write_reg(rn, base);
+            },
+            Instruction::Stm { rn, registers } => {
+                let mut base = self.read_reg(rn);
+                for i in 0..=7 {
+                    if (registers & (1 << i)) != 0 {
+                        let val = self.read_reg(i);
+                        if let Err(_) = bus.write_u32(base as u64, val) {
+                            tracing::error!("Bus Write Fault (STM) at {:#x}", base);
+                        }
+                        base = base.wrapping_add(4);
+                    }
+                }
+                self.write_reg(rn, base);
             },
             
             // Control Flow
@@ -556,24 +621,6 @@ impl Cpu for CortexM {
         self.pc = self.pc.wrapping_add(pc_increment);
         
         Ok(())
-    }
-
-    fn set_pc(&mut self, val: u32) {
-        self.pc = val;
-    }
-    
-    fn get_pc(&self) -> u32 {
-        self.pc
-    }
-    
-    fn set_sp(&mut self, val: u32) {
-        self.sp = val;
-    }
-
-    fn set_exception_pending(&mut self, exception_num: u32) {
-        if exception_num < 32 {
-            self.pending_exceptions |= 1 << exception_num;
-        }
     }
 }
 

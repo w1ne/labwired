@@ -4,6 +4,9 @@ pub mod bus;
 pub mod decoder;
 pub mod peripherals;
 
+use std::sync::Arc;
+use std::sync::atomic::AtomicU32;
+
 mod tests;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,6 +27,9 @@ pub trait Cpu {
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
     fn set_exception_pending(&mut self, exception_num: u32);
+    fn get_vtor(&self) -> u32;
+    fn set_vtor(&mut self, val: u32);
+    fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>);
 }
 
 /// Trait representing a memory-mapped peripheral
@@ -76,9 +82,38 @@ pub struct Machine<C: Cpu> {
 
 impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
+        let vtor = Arc::new(AtomicU32::new(0));
+        let nvic_state = Arc::new(peripherals::nvic::NvicState::default());
+        
+        let mut cpu = C::default();
+        cpu.set_shared_vtor(vtor.clone());
+        
+        let mut bus = bus::SystemBus::new();
+        bus.nvic = Some(nvic_state.clone());
+        
+        // Register SCB
+        let scb = peripherals::scb::Scb::new(vtor);
+        bus.peripherals.push(bus::PeripheralEntry {
+            name: "scb".to_string(),
+            base: 0xE000ED00,
+            size: 0x40,
+            irq: None,
+            dev: Box::new(scb),
+        });
+
+        // Register NVIC
+        let nvic = peripherals::nvic::Nvic::new(nvic_state);
+        bus.peripherals.push(bus::PeripheralEntry {
+            name: "nvic".to_string(),
+            base: 0xE000E100,
+            size: 0x400,
+            irq: None,
+            dev: Box::new(nvic),
+        });
+
         Self {
-            cpu: C::default(),
-            bus: bus::SystemBus::new(), 
+            cpu,
+            bus,
         }
     }
 }
@@ -109,10 +144,11 @@ impl<C: Cpu> Machine<C> {
     pub fn reset(&mut self) -> SimResult<()> {
         self.cpu.reset();
         
-        if let Ok(sp) = self.bus.read_u32(0x0000_0000) {
+        let vtor = self.cpu.get_vtor() as u64;
+        if let Ok(sp) = self.bus.read_u32(vtor) {
             self.cpu.set_sp(sp);
         }
-        if let Ok(pc) = self.bus.read_u32(0x0000_0004) {
+        if let Ok(pc) = self.bus.read_u32(vtor + 4) {
              self.cpu.set_pc(pc);
         }
         

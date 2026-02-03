@@ -45,14 +45,19 @@ pub enum Instruction {
     LdrLit { rt: u8, imm: u16 },        // LDR Rt, [PC, #imm]
     LdrbImm { rt: u8, rn: u8, imm: u8 },// LDRB Rt, [Rn, #imm]
     StrbImm { rt: u8, rn: u8, imm: u8 },// STRB Rt, [Rn, #imm]
+    LdrhImm { rt: u8, rn: u8, imm: u8 },// LDRH Rt, [Rn, #imm] (imm is *2)
+    StrhImm { rt: u8, rn: u8, imm: u8 },// STRH Rt, [Rn, #imm] (imm is *2)
 
     // Stack
     Push { registers: u8, m: bool },    // PUSH {Rlist, LR?}
     Pop { registers: u8, p: bool },     // POP {Rlist, PC?}
+    Ldm { rn: u8, registers: u8 },      // LDM Rn, {Rlist}
+    Stm { rn: u8, registers: u8 },      // STM Rn, {Rlist}
     
     // Control Flow
     Bl { offset: i32 },                 // BL <label> (32-bit T1+T2)
     Bx { rm: u8 },                      // BX Rm
+    Mul { rd: u8, rn: u8 },             // MUL Rd, Rn (Rd = Rn * Rd)
     
     // SP-Relative
     LdrSp { rt: u8, imm: u16 },         // LDR Rt, [SP, #imm]
@@ -123,6 +128,7 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
             0x1 => Instruction::Eor { rd, rm }, // EOR
             0xA => Instruction::CmpReg { rn: rd, rm }, // CMP (register) T1
             0xC => Instruction::Orr { rd, rm }, // ORR
+            0xD => Instruction::Mul { rd, rn: rm }, // MUL
             0xF => Instruction::Mvn { rd, rm }, // MVN
             _ => Instruction::Unknown(opcode), 
         };
@@ -191,6 +197,22 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
             return Instruction::StrbImm { rt, rn, imm }; // 0x70xx
         }
     }
+
+    // 4.5 Load/Store Halfword (Imm5) (T1): 1000 Liii iinn nttt
+    if (opcode & 0xF000) == 0x8000 {
+        let is_load = (opcode & 0x0800) != 0;
+        let imm5 = ((opcode >> 6) & 0x1F) as u8;
+        // The immediate is scaled by 2 for halfword access
+        let imm = imm5 << 1;
+        let rn = ((opcode >> 3) & 0x7) as u8;
+        let rt = (opcode & 0x7) as u8;
+        
+        if is_load {
+             return Instruction::LdrhImm { rt, rn, imm }; // 0x88xx
+        } else {
+             return Instruction::StrhImm { rt, rn, imm }; // 0x80xx
+        }
+    }
     
     // 4.1 LDR Literal (T1): 0100 1ttt iiii iiii
     if (opcode & 0xF800) == 0x4800 {
@@ -226,6 +248,19 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
             return Instruction::LdrSp { rt, imm };
         } else {
             return Instruction::StrSp { rt, imm };
+        }
+    }
+
+    // 6.5 Load/Store Multiple (T1): 1100 Lnnn rrrr rrrr
+    if (opcode & 0xF000) == 0xC000 {
+        let is_load = (opcode & 0x0800) != 0;
+        let rn = ((opcode >> 8) & 0x7) as u8;
+        let registers = (opcode & 0xFF) as u8;
+        
+        if is_load {
+             return Instruction::Ldm { rn, registers }; // 0xC8xx
+        } else {
+             return Instruction::Stm { rn, registers }; // 0xC0xx
         }
     }
 
