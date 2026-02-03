@@ -42,11 +42,11 @@ impl crate::Peripheral for Rcc {
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
         let mut reg_val = self.read_reg(reg_offset);
-        
+
         let mask = 0xFF << (byte_offset * 8);
         reg_val &= !mask;
         reg_val |= (value as u32) << (byte_offset * 8);
-        
+
         self.write_reg(reg_offset, reg_val);
         Ok(())
     }

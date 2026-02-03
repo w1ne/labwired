@@ -73,9 +73,11 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.4.0)**:
+**Supported Instructions (v0.7.0)**:
 - **Control Flow**: `B <offset>`, `Bcc <cond, offset>`, `BL` (32-bit), `BX`.
 - **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`, `MOVW` (32-bit), `MOVT` (32-bit).
+    - **Wide Variants**: `MOV.W`, `MVN.W` (32-bit encoding).
+    - **Division**: `SDIV`, `UDIV` (32-bit encoding).
     - Includes **High Register** support for `MOV`, `CMP`, and `ADD`.
     - Dedicated `ADD SP, #imm` and `SUB SP, #imm` forms.
 - **Logic**: `AND`, `ORR`, `EOR`.
@@ -89,8 +91,19 @@ A stateless module confirming to ARMv7-M Thumb-2 encoding.
 - **Interrupt Control**: `CPSIE`, `CPSID` (affecting `primask`).
 - **Other**: `NOP`
 
+#### **Core Peripherals (STM32F1 Compatible)**
+The system includes a suite of memory-mapped peripherals to support real-world HAL libraries:
+- **GPIO**: Mode configuration (CRL/CRH), Pin state tracking (IDR/ODR), and atomic bit manipulation (BSRR/BRR).
+- **RCC**: Reset and Clock Control (minimal) for peripheral enablement.
+- **Timers**: TIM2/TIM3 general-purpose timers with prescaling and update interrupts.
+- **I2C**: I2C Master mode with status flag sequence support (Start, Address, Transmit).
+- **SPI**: SPI Master mode with basic full-duplex transfer mocking.
+- **SysTick**: Standard Cortex-M system timer.
+- **NVIC**: Nested Vectored Interrupt Controller with prioritization and masking.
+- **SCB**: System Control Block with VTOR support.
+
 #### **32-bit Reassembly**
-The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.
+The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`, `MOV.W`, `MVN.W`, `SDIV`, `UDIV`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.
 
 ### 2. `labwired-config`
 Handles hardware declaration and validation.

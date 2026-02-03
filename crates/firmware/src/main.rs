@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use panic_halt as _;
 use cortex_m_rt::entry;
+use panic_halt as _;
 
 #[entry]
 fn main() -> ! {
@@ -10,16 +10,16 @@ fn main() -> ! {
     let a: u32 = 100;
     let b: u32 = 5;
     let c: u32 = a / b; // Should trigger UDIV instruction
-    
+
     let d: i32 = -100;
     let e: i32 = 5;
     let f: i32 = d / e; // Should trigger SDIV instruction
-    
+
     // Use the results to prevent optimization
     unsafe {
         core::ptr::write_volatile(0x2000_0000 as *mut u32, c);
         core::ptr::write_volatile(0x2000_0004 as *mut i32, f);
     }
-    
+
     loop {}
 }

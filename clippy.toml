@@ -1,3 +1,5 @@
-[workspace]
-# Deny common bugs
-# deny = ["clippy::unwrap_used", "clippy::expect_used"] # Enable later for strictness
+# Clippy configuration file
+# See https://doc.rust-lang.org/clippy/configuration.html for options
+
+# Example:
+# allow-unwrap-in-tests = true

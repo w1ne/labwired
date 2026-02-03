@@ -80,12 +80,12 @@ impl crate::Peripheral for I2c {
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
         // Registers are 16-bit but aligned to 32-bit boundaries
-        
+
         let mut reg_val = self.read_reg(reg_offset);
         let mask = 0xFF << (byte_offset * 8);
         reg_val &= !mask;
         reg_val |= (value as u16) << (byte_offset * 8);
-        
+
         self.write_reg(reg_offset, reg_val);
         Ok(())
     }

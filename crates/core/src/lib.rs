@@ -1,11 +1,11 @@
-pub mod cpu;
-pub mod memory;
 pub mod bus;
+pub mod cpu;
 pub mod decoder;
+pub mod memory;
 pub mod peripherals;
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
+use std::sync::Arc;
 
 mod tests;
 
@@ -36,7 +36,9 @@ pub trait Cpu {
 pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
-    fn tick(&mut self) -> bool { false }
+    fn tick(&mut self) -> bool {
+        false
+    }
 }
 
 /// Trait representing the system bus
@@ -44,7 +46,7 @@ pub trait Bus {
     fn read_u8(&self, addr: u64) -> SimResult<u8>;
     fn write_u8(&mut self, addr: u64, value: u8) -> SimResult<()>;
     fn tick_peripherals(&mut self) -> Vec<u32>; // Returns list of pending exception numbers
-    
+
     fn read_u16(&self, addr: u64) -> SimResult<u16> {
         let b0 = self.read_u8(addr)? as u16;
         let b1 = self.read_u8(addr + 1)? as u16;
@@ -84,13 +86,13 @@ impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
         let vtor = Arc::new(AtomicU32::new(0));
         let nvic_state = Arc::new(peripherals::nvic::NvicState::default());
-        
+
         let mut cpu = C::default();
         cpu.set_shared_vtor(vtor.clone());
-        
+
         let mut bus = bus::SystemBus::new();
         bus.nvic = Some(nvic_state.clone());
-        
+
         // Register SCB
         let scb = peripherals::scb::Scb::new(vtor);
         bus.peripherals.push(bus::PeripheralEntry {
@@ -111,10 +113,13 @@ impl<C: Cpu + Default> Machine<C> {
             dev: Box::new(nvic),
         });
 
-        Self {
-            cpu,
-            bus,
-        }
+        Self { cpu, bus }
+    }
+}
+
+impl<C: Cpu + Default> Default for Machine<C> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -125,46 +130,49 @@ impl<C: Cpu> Machine<C> {
             if !self.bus.flash.load_from_segment(segment) {
                 // If not flash, try RAM? Or just warn?
                 // For now, let's assume everything goes to Flash or RAM mapped spaces
-                 if !self.bus.ram.load_from_segment(segment) {
-                     tracing::warn!("Failed to load segment at {:#x} - outside of memory map", segment.start_addr);
-                 }
+                if !self.bus.ram.load_from_segment(segment) {
+                    tracing::warn!(
+                        "Failed to load segment at {:#x} - outside of memory map",
+                        segment.start_addr
+                    );
+                }
             }
         }
-        
+
         self.reset()?;
-        
+
         // Fallback if vector table is missing/zero
         if self.cpu.get_pc() == 0 {
             self.cpu.set_pc(image.entry_point as u32);
         }
-        
+
         Ok(())
     }
 
     pub fn reset(&mut self) -> SimResult<()> {
         self.cpu.reset();
-        
+
         let vtor = self.cpu.get_vtor() as u64;
         if let Ok(sp) = self.bus.read_u32(vtor) {
             self.cpu.set_sp(sp);
         }
         if let Ok(pc) = self.bus.read_u32(vtor + 4) {
-             self.cpu.set_pc(pc);
+            self.cpu.set_pc(pc);
         }
-        
+
         Ok(())
     }
-    
+
     pub fn step(&mut self) -> SimResult<()> {
         let res = self.cpu.step(&mut self.bus);
-        
+
         // Propagate peripherals
         let interrupts = self.bus.tick_peripherals();
         for irq in interrupts {
             self.cpu.set_exception_pending(irq);
             tracing::debug!("Exception {} Pend", irq);
         }
-        
+
         res
     }
 }

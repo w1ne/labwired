@@ -8,9 +8,11 @@ LabWired is a next-generation simulation platform designed to bridge the gap bet
 **Key Features:**
 - **Declarative Configuration**: Define Chips and Boards in YAML (including memory maps and peripherals).
 - **System Services**: Full support for SysTick, Vector Table Boot, and Exception Handling.
+- **Core Peripheral Ecosystem**: STM32F1-compatible GPIO, RCC, Timers, I2C, and SPI models.
+- **Advanced Debugging**: Instruction-level execution tracing and simulation step control.
 - **Functional Stubbing**: Mock external sensors and devices without complex emulation.
 - **High Performance**: Native Rust implementation (`labwired-core`).
-- **Cloud Ready**: Designed for headless execution in CI/CD pipelines.
+- **HAL Compatible**: Supports running binaries built with standard `stm32f1xx-hal`.
 
 ## 🏗 Architecture
 The project is organized as a Rust Workspace:
