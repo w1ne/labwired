@@ -616,4 +616,36 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(machine.cpu.r8, 0, "Division by zero should return 0");
     }
+
+    #[test]
+    fn test_gpio_basic() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        
+        // GPIOA Base: 0x4001_0800
+        // CRL: 0x00, IDR: 0x08, ODR: 0x0C, BSRR: 0x10, BRR: 0x14
+        
+        // 1. Check reset values
+        let crl = machine.bus.read_u32(0x4001_0800).unwrap();
+        assert_eq!(crl, 0x4444_4444, "GPIOA_CRL reset value mismatched");
+        
+        // 2. Test ODR write
+        machine.bus.write_u32(0x4001_080C, 0x1234).unwrap();
+        let odr = machine.bus.read_u32(0x4001_080C).unwrap();
+        assert_eq!(odr, 0x1234, "GPIOA_ODR write/read mismatched");
+        
+        // 3. Test BSRR Set (Pin 5)
+        machine.bus.write_u32(0x4001_0810, 1 << 5).unwrap();
+        let odr = machine.bus.read_u32(0x4001_080C).unwrap();
+        assert_eq!(odr, 0x1234 | (1 << 5), "GPIOA_BSRR Set failed");
+        
+        // 4. Test BSRR Reset (Pin 4)
+        machine.bus.write_u32(0x4001_0810, 1 << (16 + 4)).unwrap();
+        let odr = machine.bus.read_u32(0x4001_080C).unwrap();
+        assert_eq!(odr, (0x1234 | (1 << 5)) & !(1 << 4), "GPIOA_BSRR Reset failed");
+        
+        // 5. Test BRR (Pin 5)
+        machine.bus.write_u32(0x4001_0814, 1 << 5).unwrap();
+        let odr = machine.bus.read_u32(0x4001_080C).unwrap();
+        assert_eq!(odr, (0x1234 | (1 << 5)) & !(1 << 4) & !(1 << 5), "GPIOA_BRR failed");
+    }
 }

@@ -3,3 +3,8 @@ pub mod systick;
 pub mod stub;
 pub mod scb;
 pub mod nvic;
+pub mod gpio;
+pub mod rcc;
+pub mod timer;
+pub mod i2c;
+pub mod spi;

@@ -203,3 +203,46 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
 
 ### Milestone
 **"Real Firmware Ready"**: The simulator can execute production-grade HAL libraries and serve as a viable alternative to physical development boards for early-stage firmware development.
+
+### Delivery Milestones (Concrete)
+These milestones break Iteration 9 into shippable increments with explicit acceptance checks.
+
+#### Milestone 9.1: Instruction Compatibility Baseline
+- [ ] Run a real HAL-based GPIO "Blinky" firmware through the simulator.
+- [ ] Add any missing Thumb-2 encodings discovered during execution (no "unknown instruction" logs).
+- [ ] Collect a short instruction trace (first 200 steps) to validate decode/execute flow.
+
+**Acceptance Tests**
+- `cargo test` passes.
+- `cargo run -p labwired-cli -- --firmware <blinky.elf> --system system.yaml --trace` runs for 1,000+ steps without `Unknown instruction` warnings.
+
+#### Milestone 9.2: GPIO Peripheral MVP
+- [ ] Implement GPIO peripheral with a minimal STM32F1-compatible register subset.
+- [ ] Support at least `MODER/CRL/CRH`, `IDR`, `ODR`, and `BSRR` semantics.
+- [ ] Add virtual pin state tracking (read/write reflecting ODR/IDR behavior).
+
+**Acceptance Tests**
+- Unit tests for register read/write semantics.
+- Example `blinky` toggles a virtual pin state (verified by log or inspection helper).
+
+#### Milestone 9.3: I2C Peripheral MVP
+- [ ] Implement I2C master mode with a simple state machine (start, address, read/write, stop).
+- [ ] Define a virtual device attachment API (in-memory mock sensor).
+
+**Acceptance Tests**
+- Example firmware performs a read from a virtual sensor and logs a value.
+
+#### Milestone 9.4: SPI Peripheral MVP
+- [ ] Implement SPI master mode with full-duplex transfer and basic status flags.
+- [ ] Support a virtual SPI flash device with a minimal command set (READ, WRITE).
+
+**Acceptance Tests**
+- Example firmware reads and writes a block of data through SPI and verifies contents.
+
+#### Milestone 9.5: Peripheral Extensibility & Docs
+- [ ] Document peripheral development guide (API, register mapping, wiring).
+- [ ] Create `docs/getting_started_real_firmware.md` walkthrough using GPIO blinky.
+- [ ] Extend YAML descriptor format to include register map specs (if needed by GPIO/I2C/SPI).
+
+**Acceptance Tests**
+- New doc renders cleanly and aligns with CLI usage in README.

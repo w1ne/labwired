@@ -40,7 +40,77 @@ impl SystemBus {
                     size: 0x1000,
                     irq: None,
                     dev: Box::new(crate::peripherals::uart::Uart::new()),
-                }
+                },
+                PeripheralEntry {
+                    name: "gpioa".to_string(),
+                    base: 0x4001_0800,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "gpiob".to_string(),
+                    base: 0x4001_0C00,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "gpioc".to_string(),
+                    base: 0x4001_1000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "rcc".to_string(),
+                    base: 0x4002_1000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::rcc::Rcc::new()),
+                },
+                PeripheralEntry {
+                    name: "tim2".to_string(),
+                    base: 0x4000_0000,
+                    size: 0x400,
+                    irq: Some(28),
+                    dev: Box::new(crate::peripherals::timer::Timer::new()),
+                },
+                PeripheralEntry {
+                    name: "tim3".to_string(),
+                    base: 0x4000_0400,
+                    size: 0x400,
+                    irq: Some(29),
+                    dev: Box::new(crate::peripherals::timer::Timer::new()),
+                },
+                PeripheralEntry {
+                    name: "i2c1".to_string(),
+                    base: 0x4000_5400,
+                    size: 0x400,
+                    irq: Some(31),
+                    dev: Box::new(crate::peripherals::i2c::I2c::new()),
+                },
+                PeripheralEntry {
+                    name: "i2c2".to_string(),
+                    base: 0x4000_5800,
+                    size: 0x400,
+                    irq: Some(33),
+                    dev: Box::new(crate::peripherals::i2c::I2c::new()),
+                },
+                PeripheralEntry {
+                    name: "spi1".to_string(),
+                    base: 0x4001_3000,
+                    size: 0x400,
+                    irq: Some(35),
+                    dev: Box::new(crate::peripherals::spi::Spi::new()),
+                },
+                PeripheralEntry {
+                    name: "spi2".to_string(),
+                    base: 0x4000_3800,
+                    size: 0x400,
+                    irq: Some(36),
+                    dev: Box::new(crate::peripherals::spi::Spi::new()),
+                },
             ],
             nvic: None,
         }
@@ -58,13 +128,18 @@ impl SystemBus {
         };
 
         for p_cfg in &chip.peripherals {
-            let mut dev: Box<dyn Peripheral> = match p_cfg.r#type.as_str() {
+            let dev: Box<dyn Peripheral> = match p_cfg.r#type.as_str() {
                 "uart" => Box::new(crate::peripherals::uart::Uart::new()),
                 "systick" => Box::new(crate::peripherals::systick::Systick::new()),
+                "gpio" => Box::new(crate::peripherals::gpio::GpioPort::new()),
+                "rcc" => Box::new(crate::peripherals::rcc::Rcc::new()),
+                "timer" => Box::new(crate::peripherals::timer::Timer::new()),
+                "i2c" => Box::new(crate::peripherals::i2c::I2c::new()),
+                "spi" => Box::new(crate::peripherals::spi::Spi::new()),
                 _ => continue, // Unsupported for now
             };
             
-            // Apply external device stubs if connected to this peripheral ID
+            let mut dev = dev;
             for ext in &_manifest.external_devices {
                 if ext.connection == p_cfg.id {
                     tracing::info!("Stubbing {} on {}", ext.id, p_cfg.id);
