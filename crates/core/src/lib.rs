@@ -3,6 +3,7 @@ pub mod cpu;
 pub mod decoder;
 pub mod memory;
 pub mod peripherals;
+pub mod metrics;
 
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
@@ -19,10 +20,18 @@ pub enum SimulationError {
 
 pub type SimResult<T> = Result<T, SimulationError>;
 
+/// Trait for observing simulation events in a modular way.
+pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
+    fn on_simulation_start(&self) {}
+    fn on_simulation_stop(&self) {}
+    fn on_step_start(&self, _pc: u32, _opcode: u16) {}
+    fn on_step_end(&self, _cycles: u32) {}
+}
+
 /// Trait representing a CPU architecture
 pub trait Cpu {
     fn reset(&mut self);
-    fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()>;
+    fn step(&mut self, bus: &mut dyn Bus, observers: &[Arc<dyn SimulationObserver>]) -> SimResult<()>;
     fn set_pc(&mut self, val: u32);
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
@@ -80,6 +89,7 @@ pub trait Bus {
 pub struct Machine<C: Cpu> {
     pub cpu: C,
     pub bus: bus::SystemBus,
+    pub observers: Vec<Arc<dyn SimulationObserver>>,
 }
 
 impl<C: Cpu + Default> Machine<C> {
@@ -113,7 +123,7 @@ impl<C: Cpu + Default> Machine<C> {
             dev: Box::new(nvic),
         });
 
-        Self { cpu, bus }
+        Self { cpu, bus, observers: Vec::new() }
     }
 }
 
@@ -139,6 +149,9 @@ impl<C: Cpu> Machine<C> {
             }
         }
 
+        for observer in &self.observers {
+            observer.on_simulation_start();
+        }
         self.reset()?;
 
         // Fallback if vector table is missing/zero
@@ -164,7 +177,7 @@ impl<C: Cpu> Machine<C> {
     }
 
     pub fn step(&mut self) -> SimResult<()> {
-        let res = self.cpu.step(&mut self.bus);
+        let res = self.cpu.step(&mut self.bus, &self.observers);
 
         // Propagate peripherals
         let interrupts = self.bus.tick_peripherals();
