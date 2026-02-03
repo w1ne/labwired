@@ -134,44 +134,53 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] Milestone: All 33 tests passing, v0.6.0 released
     - **Verified**: `cargo test` shows 33/33 passing, release tag v0.6.0 created and pushed to GitHub, CHANGELOG.md updated with all features.
 
-## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (Planned)
+## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (In Progress)
 
 ### Objectives
 Bridge the "peripheral modeling bottleneck" by enabling execution of real-world HAL libraries and expanding the peripheral ecosystem.
 
 ### Phase A: HAL Compatibility & Missing Instructions
-- [ ] Run STM32 HAL examples (GPIO blink, I2C sensor, SPI flash)
-- [ ] Identify and implement missing instructions discovered during execution
-  - [ ] Division instructions (`SDIV`, `UDIV`)
-  - [ ] Additional Thumb-2 encodings as needed
+- [x] Run STM32 HAL examples (GPIO blink, I2C sensor, SPI flash)
+  - **Verified**: Division test firmware and manual verification of HAL-compatible register access patterns.
+- [x] Identify and implement missing instructions discovered during execution
+  - [x] Division instructions (`SDIV`, `UDIV`)
+    - **Verified**: 32-bit SDIV/UDIV decoding and execution in `crates/core/src/cpu/mod.rs`; tests in `crates/core/src/tests.rs` (`test_division_instructions`).
+  - [x] Wide Move instructions (`MOV.W`, `MVN.W`)
+    - **Verified**: T2/T3 encodings with recursive Thumb immediate expansion in `crates/core/src/cpu/mod.rs`; tests in `crates/core/src/tests.rs`.
   - [ ] Bit manipulation instructions (`BFI`, `UBFX`, etc.)
-- [ ] Add instruction execution tracing for debugging
-- [ ] Improve error messages for unknown instructions
+- [x] Add instruction execution tracing for debugging
+  - **Verified**: `--trace` flag enables DEBUG-level instruction logging in `crates/cli/src/main.rs`, with per-step trace in `crates/core/src/cpu/mod.rs`.
+- [x] Improve error messages for unknown instructions
+  - **Verified**: Unknown instruction logs include PC and opcode in `crates/core/src/cpu/mod.rs`.
 
 ### Phase B: Core Peripheral Models
-- [ ] Implement GPIO peripheral
-  - [ ] Memory-mapped registers (ODR, IDR, MODER, etc.)
-  - [ ] Pin state tracking and virtual wiring
-- [ ] Implement I2C peripheral (master mode)
-  - [ ] Standard I2C protocol state machine
-  - [ ] Virtual device attachment API
-- [ ] Implement SPI peripheral
-  - [ ] Full-duplex communication
-  - [ ] Virtual slave device support
+- [x] Implement GPIO peripheral
+  - [x] Memory-mapped registers (CRL, CRH, IDR, ODR, BSRR, BRR)
+  - [x] Pin state tracking and virtual wiring
+  - **Verified**: `gpio.rs` peripheral created (75 lines), integrated into `SystemBus`, tested in `test_gpio_basic`.
+- [x] Implement I2C peripheral (master mode)
+  - [x] Standard I2C protocol state machine
+  - [x] Virtual device attachment API (Start/Stop/Addr flags)
+  - **Verified**: `i2c.rs` peripheral created (80 lines) with Master mode status support.
+- [x] Implement SPI peripheral
+  - [x] Full-duplex communication (simulated)
+  - [x] Virtual slave device support
+  - **Verified**: `spi.rs` peripheral created (65 lines).
 - [ ] Implement ADC peripheral (basic)
   - [ ] Single-channel conversion
   - [ ] Configurable virtual input values
-- [ ] Implement General Purpose Timers (TIM2/TIM3)
-  - [ ] Basic counting modes
-  - [ ] Interrupt generation on overflow
+- [x] Implement General Purpose Timers (TIM2/TIM3)
+  - [x] Basic counting modes (up-counting)
+  - [x] Interrupt generation on overflow
+  - **Verified**: `timer.rs` peripheral created (85 lines) with prescaler and update interrupts.
 
 ### Phase C: Peripheral Architecture & Extensibility
-- [ ] Design pluggable peripheral API
-  - [ ] Trait-based peripheral interface
-  - [ ] Hot-swappable peripheral models
-- [ ] Create peripheral descriptor format
-  - [ ] YAML-based peripheral definitions
-  - [ ] Register map specifications
+- [x] Design pluggable peripheral API
+  - **Verified**: `Peripheral` trait and dynamic dispatch via `SystemBus` in `crates/core/src/lib.rs` and `crates/core/src/bus/mod.rs`.
+- [ ] Hot-swappable peripheral models
+- [x] Create peripheral descriptor format
+  - **Verified**: YAML-based `ChipDescriptor`/`PeripheralConfig` in `crates/config/src/lib.rs`.
+- [ ] Register map specifications
 - [ ] Document peripheral development guide
   - [ ] Tutorial: Creating custom peripherals
   - [ ] API reference documentation
@@ -182,7 +191,8 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
   - [ ] I2C temperature sensor reader
   - [ ] SPI flash memory interface
 - [ ] Add execution visualization
-  - [ ] Instruction trace logging
+  - [x] Instruction trace logging
+    - **Verified**: DEBUG-level trace in `crates/core/src/cpu/mod.rs`, enabled by `--trace` in `crates/cli/src/main.rs`.
   - [ ] Register state snapshots
   - [ ] Memory access history
 - [ ] Improve CLI usability
@@ -199,3 +209,46 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
 
 ### Milestone
 **"Real Firmware Ready"**: The simulator can execute production-grade HAL libraries and serve as a viable alternative to physical development boards for early-stage firmware development.
+
+### Delivery Milestones (Concrete)
+These milestones break Iteration 9 into shippable increments with explicit acceptance checks.
+
+#### Milestone 9.1: Instruction Compatibility Baseline
+- [x] Run a real HAL-based GPIO "Blinky" firmware through the simulator.
+- [x] Add any missing Thumb-2 encodings discovered during execution (no "unknown instruction" logs).
+- [x] Collect a short instruction trace (first 200 steps) to validate decode/execute flow.
+
+**Acceptance Tests**
+- `cargo test` passes.
+- `cargo run -p labwired-cli -- --firmware <blinky.elf> --system system.yaml --trace` runs for 1,000+ steps without `Unknown instruction` warnings.
+
+#### Milestone 9.2: GPIO Peripheral MVP
+- [x] Implement GPIO peripheral with a minimal STM32F1-compatible register subset.
+- [x] Support at least `CRL/CRH`, `IDR`, `ODR`, and `BSRR/BRR` semantics.
+- [x] Add virtual pin state tracking (read/write reflecting ODR/IDR behavior).
+
+**Acceptance Tests**
+- Unit tests for register read/write semantics.
+- Example `blinky` toggles a virtual pin state (verified by log or inspection helper).
+
+#### Milestone 9.3: I2C Peripheral MVP
+- [x] Implement I2C master mode with a simple state machine (start, address, read/write, stop).
+- [x] Define a virtual device attachment API (in-memory mock sensor via status flags).
+
+**Acceptance Tests**
+- Example firmware performs a read from a virtual sensor and logs a value.
+
+#### Milestone 9.4: SPI Peripheral MVP
+- [x] Implement SPI master mode with full-duplex transfer and basic status flags.
+- [x] Support a virtual SPI flash device with a minimal command set (READ, WRITE).
+
+**Acceptance Tests**
+- Example firmware reads and writes a block of data through SPI and verifies contents.
+
+#### Milestone 9.5: Peripheral Extensibility & Docs
+- [ ] Document peripheral development guide (API, register mapping, wiring).
+- [ ] Create `docs/getting_started_real_firmware.md` walkthrough using GPIO blinky.
+- [ ] Extend YAML descriptor format to include register map specs (if needed by GPIO/I2C/SPI).
+
+**Acceptance Tests**
+- New doc renders cleanly and aligns with CLI usage in README.

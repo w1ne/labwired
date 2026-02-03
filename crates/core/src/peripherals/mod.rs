@@ -1,5 +1,10 @@
-pub mod uart;
-pub mod systick;
-pub mod stub;
-pub mod scb;
+pub mod gpio;
+pub mod i2c;
 pub mod nvic;
+pub mod rcc;
+pub mod scb;
+pub mod spi;
+pub mod stub;
+pub mod systick;
+pub mod timer;
+pub mod uart;

@@ -8,16 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0] - 2026-02-03
 
 ### Added
-- **ISA**: Thumb-2 wide immediate move instruction:
-    - **MOV.W (T3 encoding)**: Implemented 32-bit MOV with modified immediate constant
-    - **thumb_expand_imm()**: Helper function for ARM modified immediate expansion
-    - Supports pattern-based and rotation-based immediate encoding
-- **Tests**: Added `test_mov_w_instruction` for MOV.W validation (34 tests total)
-- **Firmware**: Created division test firmware to identify missing instructions
+- **ISA**: Advanced Thumb-2 instruction set extensions for HAL compatibility:
+    - **MOV.W / MVN.W (T2/T3)**: 32-bit move/move-not with ARM-modified immediate expansion.
+    - **SDIV / UDIV (T1)**: Signed and Unsigned 32-bit division instructions.
+    - **thumb_expand_imm()**: Recursive immediate constant expansion for 32-bit instructions.
+- **Core Peripherals**: STM32F1-compatible memory-mapped peripheral ecosystem:
+    - **GPIO**: Mode config (CRL/CRH), Pin state tracking (IDR/ODR), and atomic bit manipulation (BSRR/BRR).
+    - **RCC**: Reset & Clock Control enabling peripheral lifecycle management.
+    - **Timers (TIM2/TIM3)**: 16-bit timers with prescaling and update interrupts.
+    - **I2C**: Master mode support with status flags (SB, ADDR, TXE, etc.).
+    - **SPI**: Master mode transfer simulation and status management.
+- **CLI**: Advanced simulation and debugging features:
+    - **Execution Tracing**: `--trace` flag for instruction-level logging with PC and opcode.
+    - **Simulation Control**: `--max-steps` option to prevent infinite loops in firmware.
+- **Diagnostics**: Detailed error hinting for unknown instructions (Thumb-2 vs Coprocessor vs SIMD).
+- **Tests**: Comprehensive validation suite:
+    - `test_mov_w_instruction` & `test_mvn_w_instruction`.
+    - `test_division_instructions` for SDIV/UDIV.
+    - `test_gpio_basic` for peripheral register and bit manipulation verification.
+    - Total unit tests: **37**.
 
 ### Changed
-- Improved unknown instruction warnings with detailed opcode information
-- Enhanced 32-bit instruction decoding with better pattern matching
+- Unified 32-bit instruction reassembly logic for broader ISA support.
+- Refactored `SystemBus` to pre-register core peripherals (GPIO, RCC, Timers) by default.
 
 ## [0.6.0] - 2026-02-03
 
