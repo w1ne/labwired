@@ -12,12 +12,30 @@ struct Args {
     /// Path to the system manifest (YAML)
     #[arg(short, long)]
     system: Option<PathBuf>,
+
+    /// Enable instruction-level execution tracing
+    #[arg(short, long)]
+    trace: bool,
+
+    /// Maximum number of steps to execute (default: 20000)
+    #[arg(long, default_value = "20000")]
+    max_steps: usize,
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
-    
+    // Initialize tracing with appropriate level based on --trace flag
     let args = Args::parse();
+    
+    if args.trace {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+    }
+    
     info!("Starting LabWired Simulator");
 
     let bus = if let Some(sys_path) = args.system {
@@ -47,14 +65,15 @@ fn main() -> anyhow::Result<()> {
     info!("Starting Simulation...");
     info!("Initial PC: {:#x}, SP: {:#x}", machine.cpu.pc, machine.cpu.sp);
     
-    // Run for 20000 steps to allow boot and execution
-    for i in 0..20000 {
+    // Run for specified number of steps
+    info!("Running for {} steps...", args.max_steps);
+    for step in 0..args.max_steps {
         match machine.step() {
             Ok(_) => {
                 // trace logged in step
             },
             Err(e) => {
-                info!("Simulation Error at step {}: {}", i, e);
+                info!("Simulation Error at step {}: {}", step, e);
                 break;
             }
         }
