@@ -59,9 +59,12 @@ fn main() -> anyhow::Result<()> {
     info!("Firmware Loaded Successfully!");
     info!("Entry Point: {:#x}", program.entry_point);
 
+    let metrics = std::sync::Arc::new(labwired_core::metrics::PerformanceMetrics::new());
+
     let mut machine = labwired_core::Machine {
         cpu: labwired_core::cpu::CortexM::default(),
         bus,
+        observers: vec![metrics.clone()],
     };
     machine
         .load_firmware(&program)
@@ -78,7 +81,10 @@ fn main() -> anyhow::Result<()> {
     for step in 0..args.max_steps {
         match machine.step() {
             Ok(_) => {
-                // trace logged in step
+                // Periodically report IPS if not in trace mode
+                if !args.trace && step > 0 && step % 10000 == 0 {
+                    info!("Progress: {} steps, current IPS: {:.2}", step, metrics.get_ips());
+                }
             }
             Err(e) => {
                 info!("Simulation Error at step {}: {}", step, e);
@@ -89,6 +95,9 @@ fn main() -> anyhow::Result<()> {
 
     info!("Simulation loop finished (demo).");
     info!("Final PC: {:#x}", machine.cpu.pc);
+    info!("Total Instructions: {}", metrics.get_instructions());
+    info!("Total Cycles: {}", metrics.get_cycles());
+    info!("Average IPS: {:.2}", metrics.get_ips());
 
     Ok(())
 }

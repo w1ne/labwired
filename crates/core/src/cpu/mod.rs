@@ -1,5 +1,5 @@
 use crate::decoder::{self, Instruction};
-use crate::{Bus, Cpu, SimResult};
+use crate::{Bus, Cpu, SimResult, SimulationObserver};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -181,7 +181,7 @@ impl Cpu for CortexM {
         self.vtor = vtor;
     }
 
-    fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
+    fn step(&mut self, bus: &mut dyn Bus, observers: &[Arc<dyn SimulationObserver>]) -> SimResult<()> {
         // Check for pending exceptions before executing instruction
         if self.pending_exceptions != 0 {
             // Find highest priority exception (Simplified: highest bit)
@@ -228,6 +228,10 @@ impl Cpu for CortexM {
         let fetch_pc = self.pc & !1;
         let opcode = bus.read_u16(fetch_pc as u64)?;
 
+        for observer in observers {
+            observer.on_step_start(self.pc, opcode);
+        }
+
         // Decode
         let instruction = decoder::decode_thumb_16(opcode);
 
@@ -240,6 +244,7 @@ impl Cpu for CortexM {
 
         // Execute
         let mut pc_increment = 2; // Default for 16-bit instruction
+        let mut cycles = 1;
 
         match instruction {
             Instruction::Nop => { /* Do nothing */ }
@@ -607,6 +612,7 @@ impl Cpu for CortexM {
             }
 
             Instruction::Prefix32(h1) => {
+                cycles = 2;
                 // ... (existing)
                 // This is the first half of a 32-bit instruction
                 let next_pc = (self.pc & !1) + 2;
@@ -762,6 +768,10 @@ impl Cpu for CortexM {
         }
 
         self.pc = self.pc.wrapping_add(pc_increment);
+
+        for observer in observers {
+            observer.on_step_end(cycles);
+        }
 
         Ok(())
     }
