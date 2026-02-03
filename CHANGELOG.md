@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-02-03
+
+### Added
+- **ISA**: Thumb-2 wide immediate move instruction:
+    - **MOV.W (T3 encoding)**: Implemented 32-bit MOV with modified immediate constant
+    - **thumb_expand_imm()**: Helper function for ARM modified immediate expansion
+    - Supports pattern-based and rotation-based immediate encoding
+- **Tests**: Added `test_mov_w_instruction` for MOV.W validation (34 tests total)
+- **Firmware**: Created division test firmware to identify missing instructions
+
+### Changed
+- Improved unknown instruction warnings with detailed opcode information
+- Enhanced 32-bit instruction decoding with better pattern matching
+
 ## [0.6.0] - 2026-02-03
 
 ### Added
