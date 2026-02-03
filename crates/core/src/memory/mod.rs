@@ -1,5 +1,4 @@
-use serde::{Serialize, Deserialize};
-use crate::SimResult;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
@@ -56,16 +55,16 @@ impl LinearMemory {
             false
         }
     }
-    
+
     pub fn load_from_segment(&mut self, segment: &Segment) -> bool {
         // Simple overlap check
         let end_addr = segment.start_addr + segment.data.len() as u64;
         let mem_end = self.base_addr + self.data.len() as u64;
-        
+
         if segment.start_addr >= self.base_addr && end_addr <= mem_end {
-             let offset = (segment.start_addr - self.base_addr) as usize;
-             self.data[offset..offset + segment.data.len()].copy_from_slice(&segment.data);
-             return true;
+            let offset = (segment.start_addr - self.base_addr) as usize;
+            self.data[offset..offset + segment.data.len()].copy_from_slice(&segment.data);
+            return true;
         }
         false
     }
@@ -78,28 +77,28 @@ mod tests {
     #[test]
     fn test_memory_read_write() {
         let mut mem = LinearMemory::new(1024, 0x1000);
-        
+
         // Valid write
         assert!(mem.write_u8(0x1000, 42));
         assert!(mem.write_u8(0x13FF, 99)); // Last byte
-        
+
         // Invalid write (out of bounds)
         assert!(!mem.write_u8(0x0FFF, 1));
         assert!(!mem.write_u8(0x1400, 1));
-        
+
         // Valid read
         assert_eq!(mem.read_u8(0x1000), Some(42));
         assert_eq!(mem.read_u8(0x13FF), Some(99));
-        
+
         // Invalid read
         assert_eq!(mem.read_u8(0x0FFF), None);
         assert_eq!(mem.read_u8(0x1400), None);
     }
-    
+
     #[test]
     fn test_load_from_segment() {
         let mut mem = LinearMemory::new(1024, 0x1000);
-        
+
         // Segment 1: Fits inside
         let seg1 = Segment {
             start_addr: 0x1000,
@@ -107,14 +106,14 @@ mod tests {
         };
         assert!(mem.load_from_segment(&seg1));
         assert_eq!(mem.read_u8(0x1000), Some(1));
-        
+
         // Segment 2: Overlaps end boundary (should fail)
         let seg2 = Segment {
             start_addr: 0x13FE,
             data: vec![10, 20, 30], // 3 bytes: 13FE, 13FF, 1400 (out)
         };
         assert!(!mem.load_from_segment(&seg2));
-        
+
         // Verify partial write didn't happen (atomic load not guaranteed but check logic)
         assert_eq!(mem.read_u8(0x13FF), Some(0)); // Still 0
     }

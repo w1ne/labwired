@@ -1,9 +1,9 @@
 use crate::memory::LinearMemory;
-use crate::{SimResult, SimulationError, Peripheral, Bus};
 use crate::peripherals::nvic::NvicState;
-use std::sync::Arc;
+use crate::{Bus, Peripheral, SimResult, SimulationError};
+use labwired_config::{parse_size, ChipDescriptor, SystemManifest};
 use std::sync::atomic::Ordering;
-use labwired_config::{ChipDescriptor, SystemManifest, parse_size};
+use std::sync::Arc;
 
 pub struct PeripheralEntry {
     pub name: String,
@@ -20,12 +20,18 @@ pub struct SystemBus {
     pub nvic: Option<Arc<NvicState>>,
 }
 
+impl Default for SystemBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SystemBus {
     pub fn new() -> Self {
         // Default initialization for tests
         Self {
             flash: LinearMemory::new(1024 * 1024, 0x0),
-            ram: LinearMemory::new(1024 * 1024, 0x2000_0000), 
+            ram: LinearMemory::new(1024 * 1024, 0x2000_0000),
             peripherals: vec![
                 PeripheralEntry {
                     name: "systick".to_string(),
@@ -119,7 +125,7 @@ impl SystemBus {
     pub fn from_config(chip: &ChipDescriptor, _manifest: &SystemManifest) -> anyhow::Result<Self> {
         let flash_size = parse_size(&chip.flash.size)?;
         let ram_size = parse_size(&chip.ram.size)?;
-        
+
         let mut bus = Self {
             flash: LinearMemory::new(flash_size as usize, chip.flash.base),
             ram: LinearMemory::new(ram_size as usize, chip.ram.base),
@@ -136,9 +142,16 @@ impl SystemBus {
                 "timer" => Box::new(crate::peripherals::timer::Timer::new()),
                 "i2c" => Box::new(crate::peripherals::i2c::I2c::new()),
                 "spi" => Box::new(crate::peripherals::spi::Spi::new()),
-                _ => continue, // Unsupported for now
+                other => {
+                    tracing::warn!(
+                        "Unsupported peripheral type '{}' for id '{}'; skipping",
+                        other,
+                        p_cfg.id
+                    );
+                    continue;
+                }
             };
-            
+
             let mut dev = dev;
             for ext in &_manifest.external_devices {
                 if ext.connection == p_cfg.id {
@@ -150,7 +163,11 @@ impl SystemBus {
             }
 
             // Map interrupt numbers based on ID for now (simplified)
-            let irq = if p_cfg.id == "systick" { Some(15) } else { None };
+            let irq = if p_cfg.id == "systick" {
+                Some(15)
+            } else {
+                None
+            };
 
             bus.peripherals.push(PeripheralEntry {
                 name: p_cfg.id.clone(),
@@ -201,7 +218,7 @@ impl crate::Bus for SystemBus {
         if let Some(val) = self.flash.read_u8(addr) {
             return Ok(val);
         }
-        
+
         // Dynamic Peripherals
         for p in &self.peripherals {
             if addr >= p.base && addr < p.base + p.size {
@@ -232,7 +249,7 @@ impl crate::Bus for SystemBus {
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
         let mut interrupts = Vec::new();
-        
+
         // 1. Collect IRQs from peripherals and pend them in NVIC
         for p in &mut self.peripherals {
             if p.dev.tick() {
@@ -255,11 +272,12 @@ impl crate::Bus for SystemBus {
                 }
             }
         }
-        
+
         // 2. Scan NVIC for all Pending & Enabled interrupts
         if let Some(nvic) = &self.nvic {
             for idx in 0..8 {
-                let mask = nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
+                let mask =
+                    nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
                 if mask != 0 {
                     for bit in 0..32 {
                         if (mask & (1 << bit)) != 0 {
@@ -271,7 +289,7 @@ impl crate::Bus for SystemBus {
                 }
             }
         }
-        
+
         interrupts
     }
 }

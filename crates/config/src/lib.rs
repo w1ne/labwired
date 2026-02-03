@@ -1,7 +1,7 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use anyhow::{Context, Result};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MemoryRange {
@@ -61,8 +61,10 @@ impl SystemManifest {
 }
 
 pub fn parse_size(size_str: &str) -> Result<u64> {
-    use human_size::{Size, SpecificSize, Byte};
-    let s: Size = size_str.parse().map_err(|e| anyhow::anyhow!("Invalid size format: {}", e))?;
+    use human_size::{Byte, Size, SpecificSize};
+    let s: Size = size_str
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Invalid size format: {}", e))?;
     let bytes: SpecificSize<Byte> = s.into();
     Ok(bytes.value() as u64)
 }

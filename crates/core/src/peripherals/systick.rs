@@ -1,4 +1,4 @@
-use crate::{SimResult, SimulationError};
+use crate::SimResult;
 
 /// Mocked SysTick Timer peripheral
 /// Standard address: 0xE000_E010
@@ -59,12 +59,12 @@ impl crate::Peripheral for Systick {
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
         let mut reg_val = self.read_reg(reg_offset);
-        
+
         // Modify byte
         let mask = 0xFF << (byte_offset * 8);
         reg_val &= !mask;
         reg_val |= (value as u32) << (byte_offset * 8);
-        
+
         self.write_reg(reg_offset, reg_val);
         Ok(())
     }
@@ -77,10 +77,10 @@ impl crate::Peripheral for Systick {
         if self.cvr == 0 {
             self.cvr = self.rvr;
             self.csr |= 0x10000;
-            return (self.csr & 0x2) != 0;
+            (self.csr & 0x2) != 0
         } else {
             self.cvr -= 1;
-            return false;
+            false
         }
     }
 }

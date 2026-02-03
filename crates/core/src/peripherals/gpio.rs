@@ -8,6 +8,10 @@ pub struct GpioPort {
     idr: u32,  // 0x08: input data register
     odr: u32,  // 0x0C: output data register
     lckr: u32, // 0x18: configuration lock register
+    bsrr_buf: u32,
+    bsrr_mask: u8,
+    brr_buf: u32,
+    brr_mask: u8,
 }
 
 impl GpioPort {
@@ -51,6 +55,46 @@ impl GpioPort {
             _ => {}
         }
     }
+
+    fn handle_write_only_buffer(&mut self, reg_offset: u64, byte_offset: u32, value: u8) -> bool {
+        let (buf, mask) = if reg_offset == 0x10 {
+            (&mut self.bsrr_buf, &mut self.bsrr_mask)
+        } else {
+            (&mut self.brr_buf, &mut self.brr_mask)
+        };
+
+        let shift = byte_offset * 8;
+        let byte_mask = 1u8 << byte_offset;
+        *buf &= !(0xFF << shift);
+        *buf |= (value as u32) << shift;
+        *mask |= byte_mask;
+
+        if *mask == 0x0F {
+            let val = *buf;
+            *buf = 0;
+            *mask = 0;
+            self.write_reg(reg_offset, val);
+            return true;
+        }
+
+        if *mask == 0x03 {
+            let val = *buf & 0x0000_FFFF;
+            *buf = 0;
+            *mask = 0;
+            self.write_reg(reg_offset, val);
+            return true;
+        }
+
+        if *mask == 0x0C {
+            let val = *buf & 0xFFFF_0000;
+            *buf = 0;
+            *mask = 0;
+            self.write_reg(reg_offset, val);
+            return true;
+        }
+
+        false
+    }
 }
 
 impl crate::Peripheral for GpioPort {
@@ -64,43 +108,19 @@ impl crate::Peripheral for GpioPort {
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()> {
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
-        
-        // We need to be careful with BSRR/BRR because they are 32-bit registers
-        // and byte writes might not make sense for them if the user uses write_u8.
-        // However, Bus::write_u32 calls write_u8 four times.
-        // For BSRR/BRR, we should probably accumulate the bytes or only act on the last byte?
-        // Actually, Systick implementation reads the current reg value, modifies a byte, and writes it back.
-        // That works for ODR/CRL/CRH, but for BSRR/BRR (write-only trigger), it's tricky.
-        
-        // Let's use the same pattern as Systick for now.
-        let mut reg_val = self.read_reg(reg_offset);
-        if reg_offset == 0x10 || reg_offset == 0x14 {
-             // For write-only triggers, we can't "read" them. 
-             // But write_u32 will call write_u8(0), write_u8(1), write_u8(2), write_u8(3).
-             // If we use Systick's pattern:
-             // step 0: reg_val = read(0x10) -> 0. reg_val |= value. write_reg(0x10, val) -> triggers!
-             // That's WRONG if it's supposed to be a single 32-bit write.
-             
-             // However, our Bus::write_u32 implementation is:
-             /*
-                self.write_u8(addr, (value & 0xFF) as u8)?;
-                self.write_u8(addr + 1, ((value >> 8) & 0xFF) as u8)?;
-                self.write_u8(addr + 2, ((value >> 16) & 0xFF) as u8)?;
-                self.write_u8(addr + 3, ((value >> 24) & 0xFF) as u8)?;
-             */
-             // This is NOT ideal for peripherals that expect atomic 32-bit writes.
-             
-             // For now, I'll assume 32-bit writes are used and I'll just handle them.
-             // If I want to support BSRR/BRR properly with the current byte-oriented Peripheral trait,
-             // I might need to buffer the writes.
-             
-             // Let's check how other 32-bit peripherals handle this.
+
+        if (reg_offset == 0x10 || reg_offset == 0x14)
+            && self.handle_write_only_buffer(reg_offset, byte_offset, value)
+        {
+            return Ok(());
         }
+
+        let mut reg_val = self.read_reg(reg_offset);
 
         let mask = 0xFF << (byte_offset * 8);
         reg_val &= !mask;
         reg_val |= (value as u32) << (byte_offset * 8);
-        
+
         self.write_reg(reg_offset, reg_val);
         Ok(())
     }

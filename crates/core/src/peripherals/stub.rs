@@ -22,7 +22,11 @@ impl crate::Peripheral for StubPeripheral {
         // Simple byte mapping
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
-        let val = self.values.get(&reg_offset).cloned().unwrap_or(self.default_val);
+        let val = self
+            .values
+            .get(&reg_offset)
+            .cloned()
+            .unwrap_or(self.default_val);
         Ok(((val >> (byte_offset * 8)) & 0xFF) as u8)
     }
 

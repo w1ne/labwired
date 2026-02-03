@@ -47,7 +47,7 @@ impl Spi {
                 // Simplified SPI: set RXNE, clear TXE then set it back
                 self.sr |= 0x0001; // Set RXNE (Receive buffer not empty)
                 self.sr |= 0x0002; // Set TXE
-                // Clear BSY if it was set
+                                   // Clear BSY if it was set
                 self.sr &= !0x0080;
             }
             _ => {}
@@ -66,12 +66,12 @@ impl crate::Peripheral for Spi {
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()> {
         let reg_offset = offset & !3;
         let byte_offset = (offset % 4) as u32;
-        
+
         let mut reg_val = self.read_reg(reg_offset);
         let mask = 0xFF << (byte_offset * 8);
         reg_val &= !mask;
         reg_val |= (value as u16) << (byte_offset * 8);
-        
+
         self.write_reg(reg_offset, reg_val);
         Ok(())
     }
