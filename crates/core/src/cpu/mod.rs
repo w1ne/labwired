@@ -670,7 +670,21 @@ impl Cpu for CortexM {
                         self.write_reg(rd, result);
                         pc_increment = 4;
                     } else {
-                        tracing::warn!("Unknown 32-bit instruction: {:#06x} {:#06x} at {:#x}", h1, h2, self.pc);
+                        // Enhanced unknown instruction diagnostics
+                        let pattern_hint = match h1 & 0xF800 {
+                            0xF000 => "32-bit Thumb-2 instruction",
+                            0xE800 => "Coprocessor or advanced SIMD",
+                            _ => "Unknown pattern",
+                        };
+                        
+                        tracing::warn!(
+                            "Unknown 32-bit instruction at PC={:#x}: {:#06x} {:#06x} ({})",
+                            self.pc, h1, h2, pattern_hint
+                        );
+                        tracing::debug!(
+                            "  Instruction bits: h1={:#018b} h2={:#018b}",
+                            h1, h2
+                        );
                         pc_increment = 4;
                     }
                 } else {

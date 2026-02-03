@@ -134,7 +134,7 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] Milestone: All 33 tests passing, v0.6.0 released
     - **Verified**: `cargo test` shows 33/33 passing, release tag v0.6.0 created and pushed to GitHub, CHANGELOG.md updated with all features.
 
-## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (Planned)
+## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (In Progress)
 
 ### Objectives
 Bridge the "peripheral modeling bottleneck" by enabling execution of real-world HAL libraries and expanding the peripheral ecosystem.
@@ -142,11 +142,14 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
 ### Phase A: HAL Compatibility & Missing Instructions
 - [ ] Run STM32 HAL examples (GPIO blink, I2C sensor, SPI flash)
 - [ ] Identify and implement missing instructions discovered during execution
-  - [ ] Division instructions (`SDIV`, `UDIV`)
+  - [x] Division instructions (`SDIV`, `UDIV`)
+    - **Verified**: 32-bit SDIV/UDIV decoding and execution in `crates/core/src/cpu/mod.rs`; tests in `crates/core/src/tests.rs` (`test_division_instructions`).
   - [ ] Additional Thumb-2 encodings as needed
   - [ ] Bit manipulation instructions (`BFI`, `UBFX`, etc.)
-- [ ] Add instruction execution tracing for debugging
-- [ ] Improve error messages for unknown instructions
+- [x] Add instruction execution tracing for debugging
+  - **Verified**: `--trace` flag enables DEBUG-level instruction logging in `crates/cli/src/main.rs`, with per-step trace in `crates/core/src/cpu/mod.rs`.
+- [x] Improve error messages for unknown instructions
+  - **Verified**: Unknown instruction logs include PC and opcode in `crates/core/src/cpu/mod.rs`.
 
 ### Phase B: Core Peripheral Models
 - [ ] Implement GPIO peripheral
@@ -166,12 +169,12 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
   - [ ] Interrupt generation on overflow
 
 ### Phase C: Peripheral Architecture & Extensibility
-- [ ] Design pluggable peripheral API
-  - [ ] Trait-based peripheral interface
-  - [ ] Hot-swappable peripheral models
-- [ ] Create peripheral descriptor format
-  - [ ] YAML-based peripheral definitions
-  - [ ] Register map specifications
+- [x] Design pluggable peripheral API
+  - **Verified**: `Peripheral` trait and dynamic dispatch via `SystemBus` in `crates/core/src/lib.rs` and `crates/core/src/bus/mod.rs`.
+- [ ] Hot-swappable peripheral models
+- [x] Create peripheral descriptor format
+  - **Verified**: YAML-based `ChipDescriptor`/`PeripheralConfig` in `crates/config/src/lib.rs`.
+- [ ] Register map specifications
 - [ ] Document peripheral development guide
   - [ ] Tutorial: Creating custom peripherals
   - [ ] API reference documentation
@@ -182,7 +185,8 @@ Bridge the "peripheral modeling bottleneck" by enabling execution of real-world 
   - [ ] I2C temperature sensor reader
   - [ ] SPI flash memory interface
 - [ ] Add execution visualization
-  - [ ] Instruction trace logging
+  - [x] Instruction trace logging
+    - **Verified**: DEBUG-level trace in `crates/core/src/cpu/mod.rs`, enabled by `--trace` in `crates/cli/src/main.rs`.
   - [ ] Register state snapshots
   - [ ] Memory access history
 - [ ] Improve CLI usability
