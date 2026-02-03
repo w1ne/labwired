@@ -535,4 +535,32 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(machine.cpu.pc, isr_addr);
     }
+
+    #[test]
+    fn test_mov_w_instruction() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        machine.cpu.pc = 0;
+        machine.cpu.sp = 0x2000_1000;
+        
+        // Test MOV.W R0, #0x55
+        // Encoding: 0xF04F 0x0055
+        // imm12 = 0x055 (i=0, imm3=0, imm8=0x55)
+        // Pattern 0, no rotation -> result = 0x55
+        machine.bus.write_u16(0, 0xF04F).unwrap();
+        machine.bus.write_u16(2, 0x0055).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 0x55, "MOV.W R0, #0x55 failed");
+        assert_eq!(machine.cpu.pc, 4, "PC should advance by 4");
+        
+        // Test MOV.W R1, #0x42
+        // Encoding: 0xF04F 0x0142
+        // imm12 = 0x042 (i=0, imm3=0, imm8=0x42)
+        // Pattern 0, no rotation -> result = 0x42
+        machine.cpu.pc = 4;
+        machine.bus.write_u16(4, 0xF04F).unwrap();
+        machine.bus.write_u16(6, 0x0142).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r1, 0x42, "MOV.W R1, #0x42 failed");
+        assert_eq!(machine.cpu.pc, 8, "PC should advance by 4");
+    }
 }
