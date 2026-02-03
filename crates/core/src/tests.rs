@@ -563,4 +563,57 @@ mod tests {
         assert_eq!(machine.cpu.r1, 0x42, "MOV.W R1, #0x42 failed");
         assert_eq!(machine.cpu.pc, 8, "PC should advance by 4");
     }
+
+    #[test]
+    fn test_mvn_w_instruction() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        machine.cpu.pc = 0;
+        machine.cpu.sp = 0x2000_1000;
+        
+        // Test MVN.W R0, #0x55
+        // Encoding: 0xF06F 0x0055
+        // imm12 = 0x055, expands to 0x55, then inverted to 0xFFFFFFAA
+        machine.bus.write_u16(0, 0xF06F).unwrap();
+        machine.bus.write_u16(2, 0x0055).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, !0x55, "MVN.W R0, #0x55 failed");
+        assert_eq!(machine.cpu.pc, 4, "PC should advance by 4");
+    }
+
+    #[test]
+    fn test_division_instructions() {
+        let mut machine: Machine<CortexM> = Machine::new();
+        machine.cpu.pc = 0;
+        machine.cpu.sp = 0x2000_1000;
+        
+        // Test UDIV: R0 = R1 / R2 (100 / 5 = 20)
+        // Encoding: 0xFBB1 0xF0F2 (UDIV R0, R1, R2)
+        machine.cpu.r1 = 100;
+        machine.cpu.r2 = 5;
+        machine.bus.write_u16(0, 0xFBB1).unwrap();
+        machine.bus.write_u16(2, 0xF0F2).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r0, 20, "UDIV 100/5 failed");
+        assert_eq!(machine.cpu.pc, 4);
+        
+        // Test SDIV: R3 = R4 / R5 (-100 / 5 = -20)
+        // Encoding: 0xFB94 0xF3F5 (SDIV R3, R4, R5)
+        machine.cpu.pc = 4;
+        machine.cpu.r4 = (-100i32) as u32;
+        machine.cpu.r5 = 5;
+        machine.bus.write_u16(4, 0xFB94).unwrap();
+        machine.bus.write_u16(6, 0xF3F5).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r3 as i32, -20, "SDIV -100/5 failed");
+        assert_eq!(machine.cpu.pc, 8);
+        
+        // Test division by zero (should return 0)
+        machine.cpu.pc = 8;
+        machine.cpu.r6 = 100;
+        machine.cpu.r7 = 0;
+        machine.bus.write_u16(8, 0xFBB6).unwrap();
+        machine.bus.write_u16(10, 0xF8F7).unwrap(); // UDIV R8, R6, R7
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r8, 0, "Division by zero should return 0");
+    }
 }

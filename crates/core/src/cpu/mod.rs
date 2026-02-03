@@ -618,6 +618,57 @@ impl Cpu for CortexM {
                         
                         self.write_reg(rd, imm32);
                         pc_increment = 4;
+                    } else if (h1 & 0xFBE0) == 0xF060 && (h2 & 0x8000) == 0 {
+                        // MVN.W (move not immediate) T2 encoding
+                        // Pattern: 1111 0i00 011x xxxx 0xxx xxxx xxxx xxxx
+                        // Similar to MOV.W but inverts the result
+                        let i = (h1 >> 10) & 0x1;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm8 = h2 & 0xFF;
+                        
+                        let imm12 = (i << 11) | (imm3 << 8) | imm8;
+                        let imm32 = thumb_expand_imm(imm12 as u32);
+                        
+                        // MVN inverts all bits
+                        self.write_reg(rd, !imm32);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFB90 {
+                        // SDIV (signed division) T1 encoding
+                        // Pattern: 1111 1011 1001 xxxx 1111 xxxx 1111 xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let rm = (h2 & 0xF) as u8;
+                        
+                        let dividend = self.read_reg(rn) as i32;
+                        let divisor = self.read_reg(rm) as i32;
+                        
+                        let result = if divisor == 0 {
+                            0 // Division by zero returns 0 per ARMv7-M spec
+                        } else {
+                            dividend.wrapping_div(divisor) as u32
+                        };
+                        
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFBB0 {
+                        // UDIV (unsigned division) T1 encoding
+                        // Pattern: 1111 1011 1011 xxxx 1111 xxxx 1111 xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let rm = (h2 & 0xF) as u8;
+                        
+                        let dividend = self.read_reg(rn);
+                        let divisor = self.read_reg(rm);
+                        
+                        let result = if divisor == 0 {
+                            0 // Division by zero returns 0 per ARMv7-M spec
+                        } else {
+                            dividend / divisor
+                        };
+                        
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
                     } else {
                         tracing::warn!("Unknown 32-bit instruction: {:#06x} {:#06x} at {:#x}", h1, h2, self.pc);
                         pc_increment = 4;
