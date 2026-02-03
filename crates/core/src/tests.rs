@@ -295,6 +295,70 @@ mod tests {
     }
 
     #[test]
+    fn test_gpio_bsrr_brr_buffered_writes() {
+        let mut bus = crate::bus::SystemBus::new();
+        let gpioa_base = 0x4001_0800;
+        let odr = gpioa_base + 0x0C;
+        let bsrr = gpioa_base + 0x10;
+
+        bus.write_u32(bsrr, 0x0000_0005).unwrap();
+        assert_eq!(bus.read_u32(odr).unwrap() & 0xFFFF, 0x0005);
+
+        bus.write_u32(bsrr, 0x0005_0000).unwrap();
+        assert_eq!(bus.read_u32(odr).unwrap() & 0xFFFF, 0x0000);
+
+        bus.write_u16(bsrr, 0x0003).unwrap();
+        assert_eq!(bus.read_u32(odr).unwrap() & 0xFFFF, 0x0003);
+
+        bus.write_u16(bsrr + 2, 0x0003).unwrap();
+        assert_eq!(bus.read_u32(odr).unwrap() & 0xFFFF, 0x0000);
+    }
+
+    #[test]
+    fn test_from_config_defaults_size_irq_and_base() {
+        let chip = ChipDescriptor {
+            name: "test-chip-2".to_string(),
+            arch: "cortex-m3".to_string(),
+            flash: MemoryRange { base: 0x0, size: "128KB".to_string() },
+            ram: MemoryRange { base: 0x2000_0000, size: "20KB".to_string() },
+            peripherals: vec![
+                PeripheralConfig {
+                    id: "systick".to_string(),
+                    r#type: "systick".to_string(),
+                    base_address: 0xE000_E010,
+                    config: HashMap::new(),
+                },
+                PeripheralConfig {
+                    id: "gpioa".to_string(),
+                    r#type: "gpio".to_string(),
+                    base_address: 0x4001_0800,
+                    config: HashMap::new(),
+                },
+            ],
+        };
+
+        let manifest = SystemManifest {
+            name: "test-system-2".to_string(),
+            chip: "test-chip-2".to_string(),
+            memory_overrides: HashMap::new(),
+            external_devices: Vec::new(),
+        };
+
+        let bus = crate::bus::SystemBus::from_config(&chip, &manifest).unwrap();
+        assert_eq!(bus.peripherals.len(), 2);
+
+        let systick = bus.peripherals.iter().find(|p| p.name == "systick").unwrap();
+        assert_eq!(systick.base, 0xE000_E010);
+        assert_eq!(systick.size, 0x1000);
+        assert_eq!(systick.irq, Some(15));
+
+        let gpioa = bus.peripherals.iter().find(|p| p.name == "gpioa").unwrap();
+        assert_eq!(gpioa.base, 0x4001_0800);
+        assert_eq!(gpioa.size, 0x1000);
+        assert_eq!(gpioa.irq, None);
+    }
+
+    #[test]
     fn test_cpu_execute_sp_rel() {
         let mut machine = Machine::<crate::cpu::CortexM>::new();
         let base_addr: u64 = 0x2000_0000;
@@ -828,5 +892,32 @@ mod tests {
             (0x1234 | (1 << 5)) & !(1 << 4) & !(1 << 5),
             "GPIOA_BRR failed"
         );
+    }
+
+    #[test]
+    fn test_metrics_collection() {
+        use crate::metrics::PerformanceMetrics;
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let metrics = std::sync::Arc::new(PerformanceMetrics::new());
+        machine.observers.push(metrics.clone());
+
+        // Setup: R0 = 10 (16-bit MOV)
+        // Code: 200A (MOV R0, #10)
+        machine.bus.write_u16(0x0, 0x200A).unwrap();
+        machine.cpu.pc = 0x0;
+
+        machine.step().unwrap();
+        assert_eq!(metrics.get_instructions(), 1);
+        assert_eq!(metrics.get_cycles(), 1);
+
+        // Setup: BL #0 (32-bit instruction)
+        // Code: F000 F800 (BL +0)
+        machine.bus.write_u16(0x2, 0xF000).unwrap();
+        machine.bus.write_u16(0x4, 0xF800).unwrap();
+        machine.cpu.pc = 0x2;
+
+        machine.step().unwrap();
+        assert_eq!(metrics.get_instructions(), 2);
+        assert_eq!(metrics.get_cycles(), 3); // 1 (MOV) + 2 (BL) = 3
     }
 }
