@@ -110,6 +110,92 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 
 ## Iteration 7: Stack & Advanced Flow Control (Completed)
 - [x] Implement `ADD SP, #imm` and `SUB SP, #imm`.
+    - **Verified**: `AddSp`/`SubSp` variants in `decoder.rs` (lines 26-27), execution in `cpu/mod.rs` (lines 248-254), tested in `test_iteration_7_instructions` (lines 401-410).
 - [x] Implement `ADD (High Register)` for arbitrary register addition.
+    - **Verified**: `AddRegHigh` variant in `decoder.rs` (line 28), execution in `cpu/mod.rs` (line 256), tested with R0+R8 addition (lines 412-418).
 - [x] Implement `CPSIE/CPSID` for interrupt enable/disable control.
+    - **Verified**: `Cpsie`/`Cpsid` variants in `decoder.rs` (lines 29-30), execution in `cpu/mod.rs` (lines 305-312), tested with primask flag verification (lines 420-431).
 - [x] Milestone: Full execution of standard `cortex-m-rt` initialization without warnings.
+    - **Verified**: Test suite passes (33/33 tests), no unknown instruction warnings during execution.
+
+## Iteration 8: Real-World Compatibility (Completed)
+- [x] Implement Block Memory Operations (`LDM/STM`)
+    - **Verified**: `Ldm`/`Stm` variants in `decoder.rs` (lines 45-46), execution in `cpu/mod.rs` (lines 374-397), tested in `test_iteration_8_instructions` with register list {R0-R2} (lines 446-467).
+- [x] Implement Halfword Access (`LDRH/STRH`)
+    - **Verified**: `LdrhImm`/`StrhImm` variants in `decoder.rs` (lines 47-48), `read_u16`/`write_u16` in `bus/mod.rs`, execution in `cpu/mod.rs` (lines 250-287), tested with 16-bit memory operations (lines 436-445).
+- [x] Implement Multiplication (`MUL`)
+    - **Verified**: `Mul` variant in `decoder.rs` (line 49), execution in `cpu/mod.rs` (lines 439-457) with N/Z flag updates, tested with 100×2=200 (lines 468-477).
+- [x] Implement NVIC (Nested Vectored Interrupt Controller)
+    - **Verified**: `nvic.rs` peripheral created (96 lines), ISER/ICER/ISPR/ICPR registers with atomic state, integrated in `SystemBus::tick_peripherals` (lines 158-198), tested in `test_nvic_external_interrupt` (lines 483-512).
+- [x] Implement SCB with VTOR (Vector Table relocation)
+    - **Verified**: `scb.rs` peripheral created (42 lines), VTOR register at 0xE000ED08, shared atomic state with CPU, exception handler lookup uses VTOR offset (cpu/mod.rs lines 175-180), tested in `test_vtor_relocation` (lines 514-537).
+- [x] Two-phase interrupt architecture with NVIC filtering
+    - **Verified**: `SystemBus::tick_peripherals` implements pend→signal flow, external IRQs (≥16) filtered by NVIC ISER/ISPR, core exceptions (<16) bypass NVIC (bus/mod.rs lines 158-198).
+- [x] Milestone: All 33 tests passing, v0.6.0 released
+    - **Verified**: `cargo test` shows 33/33 passing, release tag v0.6.0 created and pushed to GitHub, CHANGELOG.md updated with all features.
+
+## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (Planned)
+
+### Objectives
+Bridge the "peripheral modeling bottleneck" by enabling execution of real-world HAL libraries and expanding the peripheral ecosystem.
+
+### Phase A: HAL Compatibility & Missing Instructions
+- [ ] Run STM32 HAL examples (GPIO blink, I2C sensor, SPI flash)
+- [ ] Identify and implement missing instructions discovered during execution
+  - [ ] Division instructions (`SDIV`, `UDIV`)
+  - [ ] Additional Thumb-2 encodings as needed
+  - [ ] Bit manipulation instructions (`BFI`, `UBFX`, etc.)
+- [ ] Add instruction execution tracing for debugging
+- [ ] Improve error messages for unknown instructions
+
+### Phase B: Core Peripheral Models
+- [ ] Implement GPIO peripheral
+  - [ ] Memory-mapped registers (ODR, IDR, MODER, etc.)
+  - [ ] Pin state tracking and virtual wiring
+- [ ] Implement I2C peripheral (master mode)
+  - [ ] Standard I2C protocol state machine
+  - [ ] Virtual device attachment API
+- [ ] Implement SPI peripheral
+  - [ ] Full-duplex communication
+  - [ ] Virtual slave device support
+- [ ] Implement ADC peripheral (basic)
+  - [ ] Single-channel conversion
+  - [ ] Configurable virtual input values
+- [ ] Implement General Purpose Timers (TIM2/TIM3)
+  - [ ] Basic counting modes
+  - [ ] Interrupt generation on overflow
+
+### Phase C: Peripheral Architecture & Extensibility
+- [ ] Design pluggable peripheral API
+  - [ ] Trait-based peripheral interface
+  - [ ] Hot-swappable peripheral models
+- [ ] Create peripheral descriptor format
+  - [ ] YAML-based peripheral definitions
+  - [ ] Register map specifications
+- [ ] Document peripheral development guide
+  - [ ] Tutorial: Creating custom peripherals
+  - [ ] API reference documentation
+
+### Phase D: Developer Experience
+- [ ] Create example firmware projects
+  - [ ] "Blinky" with GPIO
+  - [ ] I2C temperature sensor reader
+  - [ ] SPI flash memory interface
+- [ ] Add execution visualization
+  - [ ] Instruction trace logging
+  - [ ] Register state snapshots
+  - [ ] Memory access history
+- [ ] Improve CLI usability
+  - [ ] Better error diagnostics
+  - [ ] Execution statistics (IPS, cycle count)
+  - [ ] Breakpoint support (basic)
+
+### Success Criteria
+- [ ] Successfully run unmodified `stm32f1xx-hal` GPIO example
+- [ ] Execute I2C communication with virtual sensor
+- [ ] Demonstrate SPI flash read/write operations
+- [ ] Zero "unknown instruction" warnings for standard HAL usage
+- [ ] Documentation: "Getting Started with Real Firmware" guide
+
+### Milestone
+**"Real Firmware Ready"**: The simulator can execute production-grade HAL libraries and serve as a viable alternative to physical development boards for early-stage firmware development.

@@ -599,6 +599,25 @@ impl Cpu for CortexM {
                         let new_val = (old_val & 0x0000FFFF) | ((imm16 as u32) << 16);
                         self.write_reg(rd, new_val);
                         pc_increment = 4;
+                    } else if (h1 & 0xFBE0) == 0xF040 && (h2 & 0x8000) == 0 {
+                        // MOV.W (immediate) T3 encoding
+                        // Pattern: 1111 0x00 010x xxxx 0xxx xxxx xxxx xxxx
+                        // h1: 1111 0i00 010S xxxx where i=imm[11], S=set flags (ignored for MOV)
+                        // h2: 0imm3 Rd imm8 where imm3=imm[10:8], Rd=dest, imm8=imm[7:0]
+                        let i = (h1 >> 10) & 0x1;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm8 = h2 & 0xFF;
+                        
+                        // Decode modified immediate constant
+                        // For MOV.W T3: imm12 = i:imm3:imm8
+                        let imm12 = (i << 11) | (imm3 << 8) | imm8;
+                        
+                        // Thumb expand immediate
+                        let imm32 = thumb_expand_imm(imm12 as u32);
+                        
+                        self.write_reg(rd, imm32);
+                        pc_increment = 4;
                     } else {
                         tracing::warn!("Unknown 32-bit instruction: {:#06x} {:#06x} at {:#x}", h1, h2, self.pc);
                         pc_increment = 4;
@@ -642,4 +661,25 @@ fn sub_with_flags(op1: u32, op2: u32) -> (u32, bool, bool) {
     let neg_res = (res as i32) < 0;
     let overflow = (neg_op1 != neg_op2) && (neg_res != neg_op1);
     (res, carry, overflow)
+}
+
+// Thumb expand immediate - implements ARM's modified immediate constant expansion
+fn thumb_expand_imm(imm12: u32) -> u32 {
+    let imm8 = imm12 & 0xFF;
+    let rot = (imm12 >> 7) & 0x1F;
+    
+    if rot == 0 {
+        // No rotation
+        match (imm12 >> 8) & 0x3 {
+            0 => imm8,
+            1 => (imm8 << 16) | imm8,
+            2 => (imm8 << 24) | (imm8 << 8),
+            3 => (imm8 << 24) | (imm8 << 16) | (imm8 << 8) | imm8,
+            _ => unreachable!(),
+        }
+    } else {
+        // Rotate right
+        let val = 0x80 | (imm8 & 0x7F);
+        val.rotate_right(rot)
+    }
 }

@@ -1,25 +1,25 @@
-#![no_main]
 #![no_std]
+#![no_main]
 
 use panic_halt as _;
 use cortex_m_rt::entry;
 
-// UART1 address for STM32F103
-const UART_TX: *mut u8 = 0x4001_3800 as *mut u8;
-
 #[entry]
 fn main() -> ! {
-    let message = "Hello, LabWired!\n";
-
-    for byte in message.bytes() {
-        unsafe {
-            // Write to UART TX register
-            // Logic: STR R0, [R1] where R1 = 0x4000_C000
-            core::ptr::write_volatile(UART_TX, byte);
-        }
+    // Test division operations
+    let a: u32 = 100;
+    let b: u32 = 5;
+    let c: u32 = a / b; // Should trigger UDIV instruction
+    
+    let d: i32 = -100;
+    let e: i32 = 5;
+    let f: i32 = d / e; // Should trigger SDIV instruction
+    
+    // Use the results to prevent optimization
+    unsafe {
+        core::ptr::write_volatile(0x2000_0000 as *mut u32, c);
+        core::ptr::write_volatile(0x2000_0004 as *mut i32, f);
     }
-
-    loop {
-        // Infinite loop
-    }
+    
+    loop {}
 }
