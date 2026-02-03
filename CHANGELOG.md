@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-03
+
+### Added
+- **ISA**: Real-world compatibility instruction set extensions:
+    - **Block Memory Operations**: Implemented `LDM` and `STM` for efficient multi-register load/store.
+    - **Halfword Access**: Added `LDRH` and `STRH` for 16-bit peripheral register access.
+    - **Multiplication**: Implemented `MUL` instruction with N/Z flag updates.
+- **System Peripherals**:
+    - **NVIC** (Nested Vectored Interrupt Controller) at `0xE000E100`:
+        - ISER/ICER registers for interrupt enable/disable
+        - ISPR/ICPR registers for interrupt pending management
+        - Atomic shared state architecture for thread-safe operation
+    - **SCB** (System Control Block) at `0xE000ED00`:
+        - VTOR (Vector Table Offset Register) support for runtime relocation
+        - Shared atomic state between CPU and memory-mapped peripheral
+- **Interrupt Architecture**:
+    - Two-phase interrupt delivery (pend → signal) with NVIC filtering
+    - External interrupts (IRQ ≥ 16) managed by NVIC ISER/ISPR
+    - Core exceptions (< 16) bypass NVIC for architectural compliance
+    - VTOR-based exception handler lookup in CPU
+- **Bus**: Implemented `read_u16`/`write_u16` for halfword memory access
+- **Tests**: Added 3 new system tests (`test_iteration_8_instructions`, `test_nvic_external_interrupt`, `test_vtor_relocation`)
+
+### Fixed
+- **Memory Map**: Corrected peripheral size allocations to prevent overlaps (SysTick: 0x10, NVIC: 0x400, SCB: 0x40)
+- **CPU**: VTOR now preserved across reset for simulation flexibility
+
 ## [0.5.0] - 2026-02-03
 
 ### Added

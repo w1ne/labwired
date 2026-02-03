@@ -1,5 +1,8 @@
 use crate::memory::LinearMemory;
 use crate::{SimResult, SimulationError, Peripheral, Bus};
+use crate::peripherals::nvic::NvicState;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use labwired_config::{ChipDescriptor, SystemManifest, parse_size};
 
 pub struct PeripheralEntry {
@@ -14,6 +17,7 @@ pub struct SystemBus {
     pub flash: LinearMemory,
     pub ram: LinearMemory,
     pub peripherals: Vec<PeripheralEntry>,
+    pub nvic: Option<Arc<NvicState>>,
 }
 
 impl SystemBus {
@@ -26,7 +30,7 @@ impl SystemBus {
                 PeripheralEntry {
                     name: "systick".to_string(),
                     base: 0xE000_E010,
-                    size: 0x100,
+                    size: 0x10,
                     irq: Some(15),
                     dev: Box::new(crate::peripherals::systick::Systick::new()),
                 },
@@ -38,6 +42,7 @@ impl SystemBus {
                     dev: Box::new(crate::peripherals::uart::Uart::new()),
                 }
             ],
+            nvic: None,
         }
     }
 
@@ -49,6 +54,7 @@ impl SystemBus {
             flash: LinearMemory::new(flash_size as usize, chip.flash.base),
             ram: LinearMemory::new(ram_size as usize, chip.ram.base),
             peripherals: Vec::new(),
+            nvic: None,
         };
 
         for p_cfg in &chip.peripherals {
@@ -151,13 +157,46 @@ impl crate::Bus for SystemBus {
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
         let mut interrupts = Vec::new();
+        
+        // 1. Collect IRQs from peripherals and pend them in NVIC
         for p in &mut self.peripherals {
             if p.dev.tick() {
                 if let Some(irq) = p.irq {
-                    interrupts.push(irq);
+                    if irq >= 16 {
+                        if let Some(nvic) = &self.nvic {
+                            let idx = ((irq - 16) / 32) as usize;
+                            let bit = (irq - 16) % 32;
+                            if idx < 8 {
+                                nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                            }
+                        } else {
+                            // No NVIC, pend legacy style
+                            interrupts.push(irq);
+                        }
+                    } else {
+                        // Core exceptions bypass NVIC ISPR/ISER
+                        interrupts.push(irq);
+                    }
                 }
             }
         }
+        
+        // 2. Scan NVIC for all Pending & Enabled interrupts
+        if let Some(nvic) = &self.nvic {
+            for idx in 0..8 {
+                let mask = nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
+                if mask != 0 {
+                    for bit in 0..32 {
+                        if (mask & (1 << bit)) != 0 {
+                            let irq = 16 + (idx as u32 * 32) + bit;
+                            tracing::info!("Bus: NVIC Signaling Pending IRQ {}", irq);
+                            interrupts.push(irq);
+                        }
+                    }
+                }
+            }
+        }
+        
         interrupts
     }
 }
