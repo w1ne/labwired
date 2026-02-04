@@ -396,5 +396,10 @@ assertions:
     assert!(junit.contains("name=\"assertion 3: expected_stop_reason: MaxSteps\""));
 
     // Two failing assertions => two separate <failure> entries.
-    assert_eq!(junit.matches("<failure message=\"assertion failed\">").count(), 2);
+    assert_eq!(
+        junit
+            .matches("<failure message=\"assertion failed\">")
+            .count(),
+        2
+    );
 }

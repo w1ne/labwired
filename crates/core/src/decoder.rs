@@ -57,16 +57,16 @@ pub enum Instruction {
     Mul { rd: u8, rn: u8 }, // MUL Rd, Rn (Rd = Rn * Rd)
 
     // SP-Relative
-    LdrSp { rt: u8, imm: u16 }, // LDR Rt, [SP, #imm]
-    StrSp { rt: u8, imm: u16 }, // STR Rt, [SP, #imm]
+    LdrSp { rt: u8, imm: u16 },    // LDR Rt, [SP, #imm]
+    StrSp { rt: u8, imm: u16 },    // STR Rt, [SP, #imm]
     AddSpReg { rd: u8, imm: u16 }, // ADD Rd, SP, #imm (ADR-like for SP)
 
     // Other ALU
-    Uxtb { rd: u8, rm: u8 }, // UXTB Rd, Rm
-    Adr { rd: u8, imm: u16 }, // ADR Rd, <label>
-    AsrReg { rd: u8, rm: u8 }, // ASR Rd, Rm
+    Uxtb { rd: u8, rm: u8 },           // UXTB Rd, Rm
+    Adr { rd: u8, imm: u16 },          // ADR Rd, <label>
+    AsrReg { rd: u8, rm: u8 },         // ASR Rd, Rm
     LdrReg { rt: u8, rn: u8, rm: u8 }, // LDR Rt, [Rn, Rm]
-    Rsbs { rd: u8, rn: u8 }, // RSBS Rd, Rn, #0
+    Rsbs { rd: u8, rn: u8 },           // RSBS Rd, Rn, #0
 
     Unknown(u16),
     // Intermediate state for 32-bit instruction (First half)
@@ -309,7 +309,7 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         let is_add_sp = (opcode & 0x0800) != 0;
         let rd = ((opcode >> 8) & 0x7) as u8;
         let imm8 = opcode & 0xFF;
-        let imm = (imm8 as u16) << 2;
+        let imm = imm8 << 2;
         if is_add_sp {
             return Instruction::AddSpReg { rd, imm };
         } else {

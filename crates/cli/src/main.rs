@@ -290,7 +290,10 @@ fn build_stop_reason_details(
                 value: duration.as_millis().min(u128::from(u64::MAX)) as u64,
             }),
         ),
-        StopReason::MemoryViolation | StopReason::DecodeError | StopReason::Halt | StopReason::ConfigError => (None, None),
+        StopReason::MemoryViolation
+        | StopReason::DecodeError
+        | StopReason::Halt
+        | StopReason::ConfigError => (None, None),
     };
 
     StopReasonDetails {
@@ -369,7 +372,14 @@ fn run_test(args: TestArgs) -> ExitCode {
             max_steps, MAX_ALLOWED_STEPS
         );
         error!("{}", msg);
-        write_config_error_outputs(&args, None, args.system.as_ref(), None, Some(&resolved_limits), msg);
+        write_config_error_outputs(
+            &args,
+            None,
+            args.system.as_ref(),
+            None,
+            Some(&resolved_limits),
+            msg,
+        );
         return ExitCode::from(EXIT_CONFIG_ERROR);
     }
 
@@ -386,7 +396,14 @@ fn run_test(args: TestArgs) -> ExitCode {
                     "Missing firmware path (provide --firmware or set inputs.firmware in script)"
                         .to_string();
                 error!("{}", msg);
-                write_config_error_outputs(&args, None, args.system.as_ref(), None, Some(&resolved_limits), msg);
+                write_config_error_outputs(
+                    &args,
+                    None,
+                    args.system.as_ref(),
+                    None,
+                    Some(&resolved_limits),
+                    msg,
+                );
                 return ExitCode::from(EXIT_CONFIG_ERROR);
             }
         },
@@ -915,14 +932,19 @@ fn write_junit_xml(
     stop_reason_details: &StopReasonDetails,
 ) -> std::io::Result<()> {
     let any_assertion_failed = assertions.iter().any(|a| !a.passed);
-    let any_expected_stop_reason_matched = assertions.iter().any(|a| {
-        matches!(a.assertion, TestAssertion::ExpectedStopReason(_)) && a.passed
-    });
-    let stop_requires_assertion =
-        matches!(stop_reason, StopReason::WallTime | StopReason::MaxUartBytes | StopReason::NoProgress);
+    let any_expected_stop_reason_matched = assertions
+        .iter()
+        .any(|a| matches!(a.assertion, TestAssertion::ExpectedStopReason(_)) && a.passed);
+    let stop_requires_assertion = matches!(
+        stop_reason,
+        StopReason::WallTime | StopReason::MaxUartBytes | StopReason::NoProgress
+    );
 
     let mut details = String::new();
-    details.push_str(&format!("result_schema_version={}\n", RESULT_SCHEMA_VERSION));
+    details.push_str(&format!(
+        "result_schema_version={}\n",
+        RESULT_SCHEMA_VERSION
+    ));
     details.push_str(&format!("stop_reason={:?}\n", stop_reason));
     if let Some(msg) = message {
         details.push_str(&format!("message={}\n", msg));
@@ -932,10 +954,16 @@ fn write_junit_xml(
         stop_reason_details.triggered_stop_condition
     ));
     if let Some(t) = &stop_reason_details.triggered_limit {
-        details.push_str(&format!("stop_reason_details.triggered_limit.{}={}\n", t.name, t.value));
+        details.push_str(&format!(
+            "stop_reason_details.triggered_limit.{}={}\n",
+            t.name, t.value
+        ));
     }
     if let Some(o) = &stop_reason_details.observed {
-        details.push_str(&format!("stop_reason_details.observed.{}={}\n", o.name, o.value));
+        details.push_str(&format!(
+            "stop_reason_details.observed.{}={}\n",
+            o.name, o.value
+        ));
     }
     details.push_str(&format!("steps_executed={}\n", steps_executed));
     details.push_str(&format!("cycles={}\n", cycles));
@@ -1017,7 +1045,11 @@ fn write_junit_xml(
     // One testcase per assertion so CI UIs show exactly which assertion failed.
     for (idx, a) in assertions.iter().enumerate() {
         tests += 1;
-        let name = format!("assertion {}: {}", idx + 1, assertion_short_name(&a.assertion));
+        let name = format!(
+            "assertion {}: {}",
+            idx + 1,
+            assertion_short_name(&a.assertion)
+        );
         testcases.push_str(&format!(
             "  <testcase classname=\"labwired\" name=\"{}\" time=\"0.000000\">\n",
             xml_escape(&name)
@@ -1062,7 +1094,9 @@ fn assertion_short_name(assertion: &TestAssertion) -> String {
     let s = match assertion {
         TestAssertion::UartContains(a) => format!("uart_contains: {}", a.uart_contains),
         TestAssertion::UartRegex(a) => format!("uart_regex: {}", a.uart_regex),
-        TestAssertion::ExpectedStopReason(a) => format!("expected_stop_reason: {:?}", a.expected_stop_reason),
+        TestAssertion::ExpectedStopReason(a) => {
+            format!("expected_stop_reason: {:?}", a.expected_stop_reason)
+        }
     };
 
     if s.len() <= MAX_LEN {

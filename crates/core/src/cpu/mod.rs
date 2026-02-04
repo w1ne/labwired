@@ -399,7 +399,7 @@ impl Cpu for CortexM {
             }
             Instruction::AsrReg { rd, rm } => {
                 let val = self.read_reg(rd) as i32;
-                let shift = (self.read_reg(rm) & 0xFF) as u32;
+                let shift = self.read_reg(rm) & 0xFF;
                 let res = if shift == 0 {
                     val as u32
                 } else if shift >= 32 {

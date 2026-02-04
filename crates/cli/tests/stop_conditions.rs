@@ -65,7 +65,7 @@ fn run_test(name: &str, yaml_content: &str) -> Value {
         val["stop_reason_details"]["triggered_stop_condition"],
         val["stop_reason"]
     );
-    
+
     let uart_log_path = temp_dir.join("uart.log");
     let uart_log = if uart_log_path.exists() {
         std::fs::read_to_string(&uart_log_path).unwrap_or_default()
@@ -160,7 +160,8 @@ assertions: []
 
     assert!(output.status.success());
     let result_json_path = temp_dir.join("result.json");
-    let result_content = std::fs::read_to_string(&result_json_path).expect("Failed to read result.json");
+    let result_content =
+        std::fs::read_to_string(&result_json_path).expect("Failed to read result.json");
     let result: Value = serde_json::from_str(&result_content).expect("Failed to parse");
 
     assert_eq!(result["result_schema_version"], "1.0");
