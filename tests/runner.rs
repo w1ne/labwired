@@ -55,7 +55,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -82,7 +82,7 @@ assertions:
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -108,7 +108,7 @@ name: "tiny"
 arch: "cortex-m3"
 flash:
   base: 0x0
-  size: "1KB"
+  size: "1B"
 ram:
   base: 0x20000000
   size: "1KB"
@@ -140,7 +140,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "tests/fixtures/uart-ok-thumbv7m.elf",
             "--system",
             system_path.to_str().unwrap(),
             "--script",

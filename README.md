@@ -10,6 +10,7 @@ LabWired is a next-generation simulation platform designed to bridge the gap bet
 - **System Services**: Full support for SysTick, Vector Table Boot, and Exception Handling.
 - **Core Peripheral Ecosystem**: STM32F1-compatible GPIO, RCC, Timers, I2C, and SPI models.
 - **Advanced Debugging**: Instruction-level execution tracing and simulation step control.
+- **CI Test Runner**: Deterministic `labwired test` mode with YAML scripts, JSON/JUnit outputs, and artifact bundles.
 - **Functional Stubbing**: Mock external sensors and devices without complex emulation.
 - **High Performance**: Native Rust implementation (`labwired-core`).
 - **HAL Compatible**: Supports running binaries built with standard `stm32f1xx-hal`.
@@ -79,6 +80,17 @@ INFO labwired: Total Instructions: 1540
 INFO labwired: Total Cycles: 1540
 INFO labwired: Average IPS: 125432.12
 ```
+
+### CI-Friendly Test Runner (`labwired test`)
+
+Use the deterministic runner mode to drive simulations from a YAML test script and emit machine-readable artifacts:
+
+```bash
+cargo build --release -p labwired-cli
+./target/release/labwired test --script examples/ci/uart-ok.yaml --output-dir out/artifacts --no-uart-stdout
+```
+
+See `docs/ci_test_runner.md` for schema, exit codes, and artifact formats.
 
 ## 🤝 Development Workflow
 We follow **Gitflow** and enforce strict quality gates.

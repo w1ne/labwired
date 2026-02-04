@@ -1,0 +1,3 @@
+name: "ci-fixture-uart1"
+chip: "../chips/ci-fixture-cortex-m3-uart1.yaml"
+external_devices: []

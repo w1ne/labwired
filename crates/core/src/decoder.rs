@@ -59,6 +59,14 @@ pub enum Instruction {
     // SP-Relative
     LdrSp { rt: u8, imm: u16 }, // LDR Rt, [SP, #imm]
     StrSp { rt: u8, imm: u16 }, // STR Rt, [SP, #imm]
+    AddSpReg { rd: u8, imm: u16 }, // ADD Rd, SP, #imm (ADR-like for SP)
+
+    // Other ALU
+    Uxtb { rd: u8, rm: u8 }, // UXTB Rd, Rm
+    Adr { rd: u8, imm: u16 }, // ADR Rd, <label>
+    AsrReg { rd: u8, rm: u8 }, // ASR Rd, Rm
+    LdrReg { rt: u8, rn: u8, rm: u8 }, // LDR Rt, [Rn, Rm]
+    Rsbs { rd: u8, rn: u8 }, // RSBS Rd, Rn, #0
 
     Unknown(u16),
     // Intermediate state for 32-bit instruction (First half)
@@ -131,6 +139,8 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return match op_alu {
             0x0 => Instruction::And { rd, rm },        // AND
             0x1 => Instruction::Eor { rd, rm },        // EOR
+            0x5 => Instruction::AsrReg { rd, rm },     // ASR (register)
+            0x9 => Instruction::Rsbs { rd, rn: rm },   // RSBS Rd, Rn, #0
             0xA => Instruction::CmpReg { rn: rd, rm }, // CMP (register) T1
             0xC => Instruction::Orr { rd, rm },        // ORR
             0xD => Instruction::Mul { rd, rn: rm },    // MUL
@@ -226,6 +236,14 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return Instruction::LdrLit { rt, imm: imm8 << 2 };
     }
 
+    // 4.2 LDR (register) (T1): 0101 100 mmm nnn ttt
+    if (opcode & 0xFE00) == 0x5800 {
+        let rm = ((opcode >> 6) & 0x7) as u8;
+        let rn = ((opcode >> 3) & 0x7) as u8;
+        let rt = (opcode & 0x7) as u8;
+        return Instruction::LdrReg { rt, rn, rm };
+    }
+
     // 4.2 PUSH/POP
     // PUSH: 1011 010M rrrr rrrr (0xB400)
     if (opcode & 0xFE00) == 0xB400 {
@@ -286,6 +304,19 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         }
     }
 
+    // 7.1 ADR (T1) / ADD (SP) (T1)
+    if (opcode & 0xF000) == 0xA000 {
+        let is_add_sp = (opcode & 0x0800) != 0;
+        let rd = ((opcode >> 8) & 0x7) as u8;
+        let imm8 = opcode & 0xFF;
+        let imm = (imm8 as u16) << 2;
+        if is_add_sp {
+            return Instruction::AddSpReg { rd, imm };
+        } else {
+            return Instruction::Adr { rd, imm };
+        }
+    }
+
     // 8. Branch (T1/T2)
     // Unconditional Branch T2: 1110 0...
     if (opcode & 0xF800) == 0xE000 {
@@ -296,6 +327,16 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
         return Instruction::Branch {
             offset: offset << 1,
         };
+    }
+
+    // 8.1 Misc (T1) (0xBxxx)
+    if (opcode & 0xF000) == 0xB000 {
+        // UXTB (T1): 1011 0010 11 mmm ddd -> 0xB2C0 base
+        if (opcode & 0xFFC0) == 0xB2C0 {
+            let rm = ((opcode >> 3) & 0x7) as u8;
+            let rd = (opcode & 0x7) as u8;
+            return Instruction::Uxtb { rd, rm };
+        }
     }
 
     // 6. 32-bit Instruction Prefix

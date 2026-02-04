@@ -30,7 +30,7 @@ name: "tiny"
 arch: "cortex-m3"
 flash:
   base: 0x0
-  size: "1KB"
+  size: "1B"
 ram:
   base: 0x20000000
   size: "1KB"
@@ -59,7 +59,7 @@ fn test_script_unknown_fields_exit_2() {
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
 unexpected_field: 123
@@ -70,7 +70,7 @@ unexpected_field: 123
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -89,7 +89,7 @@ fn test_expected_stop_reason_allows_sim_error_to_pass() {
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
   system: "system.yaml"
 limits:
   max_steps: 1
@@ -102,7 +102,7 @@ assertions:
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--system",
             system_path.to_str().unwrap(),
             "--script",
@@ -122,7 +122,7 @@ fn test_wall_time_stop_fails_without_expected_stop_reason() {
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
   wall_time_ms: 0
@@ -134,7 +134,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",

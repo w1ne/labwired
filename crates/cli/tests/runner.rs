@@ -47,7 +47,7 @@ fn test_cli_test_mode_passes_with_zero_steps() {
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
 assertions: []
@@ -58,7 +58,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -76,7 +76,7 @@ fn test_cli_test_mode_assertion_fail_exit_1() {
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
 assertions:
@@ -88,7 +88,7 @@ assertions:
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -114,7 +114,7 @@ name: "tiny"
 arch: "cortex-m3"
 flash:
   base: 0x0
-  size: "1KB"
+  size: "1B"
 ram:
   base: 0x20000000
   size: "1KB"
@@ -138,7 +138,7 @@ chip: "chip.yaml"
         r#"
 schema_version: "1.0"
 inputs:
-  firmware: "../../tests/dummy.elf"
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
 assertions: []
@@ -149,7 +149,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "../../tests/dummy.elf",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
             "--system",
             system_path.to_str().unwrap(),
             "--script",

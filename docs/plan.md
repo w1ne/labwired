@@ -1,7 +1,7 @@
 # LabWired Standalone Simulator - Iteration 1 Plan
 
 ## Objective
-Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF binary and executing a basic simulation loop for an ARM Cortex-M architecture (initially mocked/simplified).
+Deliver a standalone command-line tool (`labwired`) capable of loading an ELF binary and executing a basic simulation loop for an ARM Cortex-M architecture (initially mocked/simplified).
 
 ## Roadmap
 
@@ -37,15 +37,15 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 
 ### Phase 4: CLI & Basic Decoding (Completed)
 - [x] Argument parsing (`clap`)
-    - **Verified**: `labwired-cli --help` works, accepts `-f` argument.
+    - **Verified**: `labwired --help` works, accepts `-f` argument.
 - [x] Connect `loader` output to `core` initialization
     - **Verified**: `cli` correctly passes loaded `ProgramImage` to `Machine::load_firmware`.
 - [x] Run the simulation loop
     - **Verified**: CLI runs 10 steps of simulation and prints PC updates.
 - [x] Implement basic Thumb-2 Decoder (`MOV`, `B`)
     - **Verified**: `crates/core/src/decoder.rs` correctly decodes opcodes `0x202A` (MOV) and `0xE002` (B).
-- [x] Verify verification with `tests/dummy.elf`
-    - **Verified**: Real ELF file loaded and executed in `cli`.
+- [x] Verify verification with `tests/fixtures/uart-ok-thumbv7m.elf`
+    - **Verified**: Real ELF file loaded and executed in `cli` (see `tests/fixtures/uart-ok-thumbv7m.elf`).
 
 ### Phase 5: Verification (Completed)
 - [x] Integration tests using a dummy ELF (or just a binary file)
@@ -191,7 +191,7 @@ This section translates the business research roadmap (“The Strategic Horizon 
 | Business iteration | Primary outcome | Main artifact | Notes / mapping to this repo plan |
 | :--- | :--- | :--- | :--- |
 | **1** | Standalone local runner | CLI runner | Largely covered by Iterations 1–8 in this file. |
-| **2** | CI-native execution | Test scripting + Docker + GitHub Action | Planned as Iteration 11. |
+| **2** | CI-native execution | Test scripting + Docker + GitHub Action | Implemented in Iteration 11 (v0.9.0). |
 | **3** | IDE-grade debugging | DAP server + VS Code extension | Planned as Iteration 12. |
 | **4** | Automated peripheral modeling | Model IR + ingestion + verified codegen + registry | Planned as Iteration 13. |
 | **5** | Enterprise-scale fleets + compliance | Orchestrator + dashboard + reporting | Planned as Iteration 14. |
@@ -229,47 +229,43 @@ This section translates the business research roadmap (“The Strategic Horizon 
 ## Iteration 11: Headless CI Integration & Test Runner (Business Iteration 2)
 **Objective**: Make simulation a deterministic, scriptable CI primitive with machine-readable outputs and drop-in workflows for GitHub/GitLab.
 
-### Why this iteration is next (Repo Reality Check)
-- The current `labwired` CLI is optimized for interactive runs (logs + demo loop) and does not yet provide:
-  - Deterministic, machine-readable results (JSON/JUnit).
-  - A stable “test script” contract with assertions.
-  - Standardized exit codes suitable for CI.
-  - Structured artifact bundles (UART log, configs, firmware hash).
+### Status
+- Implemented in `v0.9.0` (see `CHANGELOG.md`) with `labwired test`, a versioned YAML test script schema, JSON/JUnit outputs, and a composite GitHub Action wrapper.
 
 ### Phase A: Test Script Specification (YAML)
-- [ ] Define a stable test schema (YAML recommended):
-  - [ ] Inputs: firmware path, system config, optional assets (e.g., flash images).
-  - [ ] Limits: max cycles, wall-clock timeout, max UART bytes.
-  - [ ] Assertions: UART contains/regex, expected exit code, “no hardfault”.
+- [x] Define a stable test schema (YAML recommended):
+  - [x] Inputs: firmware path + optional system config.
+  - [x] Limits: max steps/cycles, wall-clock timeout, max UART bytes, “no progress” detection.
+  - [x] Assertions: UART contains/regex, expected stop reason.
   - [ ] Optional actions: inject UART RX, toggle GPIO, trigger IRQ at time T.
-- [ ] Implement schema validation with actionable error messages.
-- [ ] Add a version field (`schema_version`) and compatibility policy.
+- [x] Implement schema validation with actionable error messages.
+- [x] Add a version field (`schema_version`) and compatibility policy (v1.0; legacy v1 supported but deprecated).
 
 ### Phase B: Headless Runner Semantics
-- [ ] Add a dedicated runner mode/subcommand (proposed: `labwired test --script <yaml>`).
-- [ ] Implement deterministic stop conditions (assertions + timeouts + “no progress”/hang detection).
-- [ ] Standardize exit codes (`0` pass, `1` assertion failure, `2` infra/config error, `3` simulation/runtime error).
-- [ ] Ensure a run is reproducible from artifacts (firmware hash + system + script).
+- [x] Add a dedicated runner mode/subcommand (`labwired test --script <yaml>`).
+- [x] Implement deterministic stop conditions (assertions + timeouts + “no progress”/hang detection).
+- [x] Standardize exit codes (`0` pass, `1` assertion failure, `2` infra/config error, `3` simulation/runtime error).
+- [x] Ensure a run is reproducible from artifacts (firmware hash + system + script + resolved limits).
 
 ### Phase C: Reporting for CI Systems
-- [ ] Emit a JSON summary (pass/fail, duration, cycles, key assertions).
-- [ ] Emit JUnit XML (optional) for CI test reporting.
-- [ ] Emit an artifact bundle (UART log, structured trace if enabled, configs).
-- [ ] Make UART output capturable as a first-class artifact (stdout streaming remains optional).
+- [x] Emit a JSON summary (`result.json`) with pass/fail, stop reason details, limits, firmware hash, and assertions.
+- [x] Emit JUnit XML (`junit.xml`) for CI test reporting.
+- [x] Emit an artifact bundle (`result.json`, `uart.log`, `junit.xml`) via `--output-dir`.
+- [x] Make UART output capturable as a first-class artifact (stdout streaming remains optional).
 
 ### Phase D: Distribution & Automation
-- [ ] Publish a minimal Docker image for CI use (non-root runtime).
+- [/] Publish a minimal Docker image for CI use (non-root runtime).
 - [ ] Define a multi-arch build plan (x86_64 + ARM64) where feasible.
-- [ ] Create an official GitHub Action wrapper (inputs: firmware/system/script; outputs: artifact paths + summary).
-- [ ] Provide ready-to-copy workflows for GitHub Actions and GitLab CI.
+- [x] Create a GitHub Action wrapper (composite action in `.github/actions/labwired-test`).
+- [x] Provide ready-to-copy workflows for GitHub Actions and GitLab CI.
 
 ### Phase E: Adoption (CI Wedge)
-- [ ] Add a small catalog of CI-ready examples (one pass + one fail) and document them.
+- [x] Add a small catalog of CI-ready examples (one pass + one fail) and document them.
 - [ ] Publish “hardware-in-the-loop replacement” reference workflows (with caching + artifact upload).
 
 ### Success Criteria
-- [ ] Users can run the same test locally and in CI and get identical outcomes (pass/fail + logs + JSON summary).
-- [ ] GitHub Action runs a sample project and publishes artifacts on both success and failure.
+- [x] Users can run the same test locally and in CI and get identical outcomes (pass/fail + logs + JSON summary).
+- [x] GitHub Action runs a sample script and publishes artifacts on both success and failure.
 
 ## Iteration 12: Interactive Debugging (DAP) (Business Iteration 3)
 **Objective**: Provide IDE-grade debugging (breakpoints/step/inspect) via the Debug Adapter Protocol, without requiring physical probes.

@@ -12,9 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Test Script Schema (YAML)**: Versioned schema for defining firmware tests with inputs (ELF/System), limits (steps/time), and assertions (UART contents, stop reasons).
     - **CI Regression Gates**: Enforced workspace-wide testing and linting in GitHub Actions.
     - **Pre-Release Verification**: Automated regression suite execution on release tags and PRs.
+- **CI Automation**:
+    - Composite GitHub Action wrapper: `.github/actions/labwired-test`.
+    - CI-ready example scripts under `examples/ci/`.
 - **Documentation**: 
     - Updated `README.md` to reflect real-world division firmware behavior and IPS reporting.
     - Updated `plan.md` Iteration 10 with implementation details for modular observability.
+
+### Fixed
+- **CI Artifacts**: `labwired test --output-dir ...` now emits real `result.json` + `junit.xml` even on config/script errors (exit code `2`), with `status=error`, `stop_reason=config_error`, and a `message` field.
+
+### Changed
+- **CI Runner Artifacts**:
+    - `result.json`: added `result_schema_version`, `limits`, and `stop_reason_details`.
+    - `junit.xml`: emits one testcase per assertion to improve CI failure visibility.
 
 ## [0.8.0] - 2026-02-03
 

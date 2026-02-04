@@ -16,6 +16,12 @@ COPY Cargo.toml Cargo.lock rustfmt.toml clippy.toml ./
 COPY crates ./crates
 COPY tests ./tests
 COPY docs ./docs
+COPY examples ./examples
+COPY configs ./configs
+COPY system.yaml ./system.yaml
+
+# Install the CI runner binary into PATH (allows: `docker run ... labwired test ...`)
+RUN cargo install --locked --path crates/cli
 
 # We assume user might want to mount source, but for a "test runner" image, copying is safer for reproducibility.
 # However, to be purely "infrastructure", we might just want the tools.

@@ -1,4 +1,4 @@
-use labwired_config::{ChipDescriptor, PeripheralConfig};
+use labwired_config::ChipDescriptor;
 
 #[test]
 fn test_old_yaml_still_parses() {
