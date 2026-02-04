@@ -5,6 +5,7 @@ members = [
     "crates/loader",
     "crates/cli", 
     "crates/firmware",
+    "crates/firmware-ci-fixture",
     "crates/config",
 ]
 exclude = ["crates/firmware-hal-test"]

@@ -76,13 +76,24 @@ pub struct TestInputs {
 pub struct TestLimits {
     pub max_steps: u64,
     #[serde(default)]
+    pub max_cycles: Option<u64>,
+    #[serde(default)]
+    pub max_uart_bytes: Option<u64>,
+    #[serde(default)]
+    pub no_progress_steps: Option<u64>,
+    #[serde(default)]
     pub wall_time_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum StopReason {
+    /// Runner failed before simulation started (e.g. script parse/validation error).
+    ConfigError,
     MaxSteps,
+    MaxCycles,
+    MaxUartBytes,
+    NoProgress,
     WallTime,
     MemoryViolation,
     DecodeError,
@@ -155,6 +166,97 @@ impl TestScript {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+enum LegacySchemaVersion {
+    Int(u64),
+    Str(String),
+}
+
+impl LegacySchemaVersion {
+    fn is_v1(&self) -> bool {
+        match self {
+            LegacySchemaVersion::Int(v) => *v == 1,
+            LegacySchemaVersion::Str(s) => s.trim() == "1",
+        }
+    }
+}
+
+/// Deprecated legacy script format (schema_version: 1).
+///
+/// This format predates the v1.0 `inputs`/`limits` nesting. It remains supported for backward
+/// compatibility, but should be migrated to v1.0.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyTestScriptV1 {
+    schema_version: LegacySchemaVersion,
+    #[serde(default)]
+    pub firmware: Option<String>,
+    #[serde(default)]
+    pub system: Option<String>,
+    pub max_steps: u64,
+    #[serde(default)]
+    pub wall_time_ms: Option<u64>,
+    #[serde(default)]
+    pub assertions: Vec<TestAssertion>,
+}
+
+impl LegacyTestScriptV1 {
+    pub fn validate(&self) -> Result<()> {
+        if !self.schema_version.is_v1() {
+            anyhow::bail!(
+                "Unsupported legacy schema_version. Supported legacy versions: 1 (deprecated)"
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum LoadedTestScript {
+    V1_0(TestScript),
+    LegacyV1(LegacyTestScriptV1),
+}
+
+/// Load a CI test script from YAML.
+///
+/// Supported formats:
+/// - v1.0 (frozen): `schema_version: \"1.0\"` with `inputs` + `limits` + `assertions`.
+/// - legacy v1 (deprecated): `schema_version: 1` with `max_steps` at the top level.
+pub fn load_test_script<P: AsRef<Path>>(path: P) -> Result<LoadedTestScript> {
+    let contents = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read test script at {:?}", path.as_ref()))?;
+
+    match serde_yaml::from_str::<TestScript>(&contents) {
+        Ok(script) => {
+            script.validate()?;
+            Ok(LoadedTestScript::V1_0(script))
+        }
+        Err(v1_err) => {
+            let looks_like_legacy_v1 = serde_yaml::from_str::<serde_yaml::Value>(&contents)
+                .ok()
+                .and_then(|v| v.get("schema_version").cloned())
+                .map(|v| match v {
+                    serde_yaml::Value::Number(n) => n.as_i64() == Some(1) || n.as_u64() == Some(1),
+                    serde_yaml::Value::String(s) => s.trim() == "1",
+                    _ => false,
+                })
+                .unwrap_or(false);
+
+            if !looks_like_legacy_v1 {
+                return Err(v1_err).context(
+                    "Failed to parse Test Script YAML (expected schema_version: \"1.0\")",
+                );
+            }
+
+            let legacy: LegacyTestScriptV1 = serde_yaml::from_str(&contents)
+                .context("Failed to parse legacy Test Script YAML (schema_version: 1)")?;
+            legacy.validate()?;
+            Ok(LoadedTestScript::LegacyV1(legacy))
+        }
+    }
+}
+
 pub fn parse_size(size_str: &str) -> Result<u64> {
     use human_size::{Byte, Size, SpecificSize};
     let s: Size = size_str
@@ -167,6 +269,7 @@ pub fn parse_size(size_str: &str) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_valid_script() {
@@ -229,5 +332,34 @@ limits:
         let script: TestScript = serde_yaml::from_str(yaml).unwrap();
         let err = script.validate().unwrap_err();
         assert!(err.to_string().contains("firmware"));
+    }
+
+    fn write_temp_file(prefix: &str, contents: &str) -> std::path::PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push("labwired-config-tests");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = dir.join(format!("{}-{}.yaml", prefix, nonce));
+        std::fs::write(&path, contents).expect("Failed to write temp file");
+        path
+    }
+
+    #[test]
+    fn test_load_legacy_v1_script() {
+        let script_path = write_temp_file(
+            "legacy-v1",
+            r#"
+schema_version: 1
+max_steps: 0
+assertions: []
+"#,
+        );
+
+        let loaded = load_test_script(&script_path).unwrap();
+        assert!(matches!(loaded, LoadedTestScript::LegacyV1(_)));
     }
 }
