@@ -198,6 +198,7 @@ fn run_interactive(cli: Cli) -> ExitCode {
     ExitCode::from(EXIT_PASS)
 }
 
+#[allow(clippy::if_same_then_else)]
 fn run_test(args: TestArgs) -> ExitCode {
     let script = match TestScript::from_file(&args.script) {
         Ok(s) => s,
@@ -379,6 +380,7 @@ fn run_test(args: TestArgs) -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::if_same_then_else)]
 fn write_outputs(
     args: &TestArgs,
     status: &str,
@@ -493,7 +495,7 @@ fn build_bus(system_path: Option<PathBuf>) -> anyhow::Result<labwired_core::bus:
     Ok(bus)
 }
 
-fn resolve_script_path(script_path: &PathBuf, value: &str) -> PathBuf {
+fn resolve_script_path(script_path: &Path, value: &str) -> PathBuf {
     let p = PathBuf::from(value);
     if p.is_absolute() {
         return p;
@@ -512,6 +514,7 @@ fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_junit_xml(
     path: &Path,
     status: &str,

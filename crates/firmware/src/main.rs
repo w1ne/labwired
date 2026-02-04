@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(clippy::empty_loop)]
 
 use cortex_m_rt::entry;
 use panic_halt as _;
@@ -21,6 +22,5 @@ fn main() -> ! {
         core::ptr::write_volatile(0x2000_0004 as *mut i32, f);
     }
 
-    #[allow(clippy::empty_loop)]
     loop {}
 }
