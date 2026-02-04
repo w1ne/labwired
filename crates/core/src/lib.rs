@@ -24,12 +24,19 @@ pub enum SimulationError {
 
 pub type SimResult<T> = Result<T, SimulationError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeripheralTickResult {
+    pub irq: bool,
+    pub cycles: u32,
+}
+
 /// Trait for observing simulation events in a modular way.
 pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
     fn on_simulation_start(&self) {}
     fn on_simulation_stop(&self) {}
     fn on_step_start(&self, _pc: u32, _opcode: u16) {}
     fn on_step_end(&self, _cycles: u32) {}
+    fn on_peripheral_tick(&self, _name: &str, _cycles: u32) {}
 }
 
 /// Trait representing a CPU architecture
@@ -53,8 +60,11 @@ pub trait Cpu {
 pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
-    fn tick(&mut self) -> bool {
-        false
+    fn tick(&mut self) -> PeripheralTickResult {
+        PeripheralTickResult {
+            irq: false,
+            cycles: 0,
+        }
     }
     fn as_any(&self) -> Option<&dyn Any> {
         None
@@ -227,7 +237,14 @@ impl<C: Cpu> Machine<C> {
         let res = self.cpu.step(&mut self.bus, &self.observers);
 
         // Propagate peripherals
-        let interrupts = self.bus.tick_peripherals();
+        let (interrupts, costs) = self.bus.tick_peripherals_with_costs();
+        for c in costs {
+            if let Some(p) = self.bus.peripherals.get(c.index) {
+                for observer in &self.observers {
+                    observer.on_peripheral_tick(&p.name, c.cycles);
+                }
+            }
+        }
         for irq in interrupts {
             self.cpu.set_exception_pending(irq);
             tracing::debug!("Exception {} Pend", irq);

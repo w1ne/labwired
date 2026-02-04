@@ -68,10 +68,13 @@ impl crate::Peripheral for Timer {
         Ok(())
     }
 
-    fn tick(&mut self) -> bool {
+    fn tick(&mut self) -> crate::PeripheralTickResult {
         // Counter Enable (bit 0)
         if (self.cr1 & 0x1) == 0 {
-            return false;
+            return crate::PeripheralTickResult {
+                irq: false,
+                cycles: 0,
+            };
         }
 
         self.psc_cnt = self.psc_cnt.wrapping_add(1);
@@ -84,10 +87,16 @@ impl crate::Peripheral for Timer {
                 self.sr |= 1; // Set UIF (Update Interrupt Flag)
 
                 // Return true if Update Interrupt Enable (UIE) is set
-                return (self.dier & 1) != 0;
+                return crate::PeripheralTickResult {
+                    irq: (self.dier & 1) != 0,
+                    cycles: 1,
+                };
             }
         }
 
-        false
+        crate::PeripheralTickResult {
+            irq: false,
+            cycles: 1,
+        }
     }
 }

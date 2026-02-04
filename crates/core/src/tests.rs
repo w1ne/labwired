@@ -52,10 +52,13 @@ mod tests {
             Ok(())
         }
 
-        fn tick(&mut self) -> bool {
+        fn tick(&mut self) -> crate::PeripheralTickResult {
             let tick_now = self.tick_next;
             self.tick_next = false;
-            tick_now
+            crate::PeripheralTickResult {
+                irq: tick_now,
+                cycles: 0,
+            }
         }
     }
 
@@ -977,5 +980,28 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(metrics.get_instructions(), 2);
         assert_eq!(metrics.get_cycles(), 3); // 1 (MOV) + 2 (BL) = 3
+    }
+
+    #[test]
+    fn test_peripheral_cycle_accounting_systick() {
+        use crate::metrics::PerformanceMetrics;
+
+        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let metrics = std::sync::Arc::new(PerformanceMetrics::new());
+        machine.observers.push(metrics.clone());
+
+        // Enable SysTick so it incurs a tick cost each machine step.
+        machine.bus.write_u32(0xE000_E010, 1).unwrap(); // CSR = ENABLE
+
+        // MOV R0, #10 (16-bit)
+        machine.bus.write_u16(0x0, 0x200A).unwrap();
+        machine.cpu.pc = 0x0;
+
+        machine.step().unwrap();
+
+        assert_eq!(metrics.get_instructions(), 1);
+        assert_eq!(metrics.get_peripheral_cycles_total(), 1);
+        assert_eq!(metrics.get_peripheral_cycles("systick"), 1);
+        assert_eq!(metrics.get_cycles(), 2); // 1 (MOV) + 1 (SysTick tick)
     }
 }
