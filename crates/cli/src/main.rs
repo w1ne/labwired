@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
@@ -15,6 +16,18 @@ const EXIT_CONFIG_ERROR: u8 = 2;
 const EXIT_RUNTIME_ERROR: u8 = 3;
 
 const RESULT_SCHEMA_VERSION: &str = "1.0";
+
+fn parse_u32_addr(s: &str) -> Result<u32, String> {
+    let trimmed = s.trim();
+    if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u32::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex address '{}': {}", s, e))
+    } else {
+        u32::from_str(trimmed).map_err(|e| format!("Invalid address '{}': {}", s, e))
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -32,6 +45,10 @@ struct Cli {
     /// Path to the system manifest (YAML)
     #[arg(short, long)]
     system: Option<PathBuf>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
 
     /// Enable instruction-level execution tracing
     #[arg(short, long, global = true)]
@@ -68,6 +85,10 @@ struct TestArgs {
     /// Override max steps (takes precedence over script)
     #[arg(long)]
     max_steps: Option<u64>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
 
     /// Disable UART stdout echo (still captured for assertions/artifacts)
     #[arg(long)]
@@ -203,6 +224,10 @@ fn run_interactive(cli: Cli) -> ExitCode {
     // Run for specified number of steps
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
+        if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.pc) {
+            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.pc, step);
+            break;
+        }
         match machine.step() {
             Ok(_) => {
                 // Periodically report IPS if not in trace mode
@@ -512,6 +537,11 @@ fn run_test(args: TestArgs) -> ExitCode {
     let mut stuck_counter: u64 = 0;
 
     for step in 0..max_steps {
+        if !args.breakpoint.is_empty() && args.breakpoint.contains(&machine.cpu.pc) {
+            stop_reason = StopReason::Halt;
+            steps_executed = step;
+            break;
+        }
         if let Some(wall_time_ms) = script_wall_time_ms {
             if start.elapsed().as_millis() >= wall_time_ms as u128 {
                 stop_reason = StopReason::WallTime;
