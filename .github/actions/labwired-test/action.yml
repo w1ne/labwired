@@ -61,13 +61,29 @@ runs:
       run: |
         set -euo pipefail
         profile="${{ inputs.profile }}"
+
+        args=(build -p labwired-cli)
         if [ "$profile" = "release" ]; then
-          cargo build --locked -p labwired-cli --release
-          echo "bin=target/release/labwired" >> "$GITHUB_OUTPUT"
+          args+=(--release)
+          bin="target/release/labwired"
         else
-          cargo build --locked -p labwired-cli
-          echo "bin=target/debug/labwired" >> "$GITHUB_OUTPUT"
+          bin="target/debug/labwired"
         fi
+
+        # Prefer reproducible builds, but degrade gracefully if the lockfile is missing/out-of-date.
+        out="$(mktemp)"
+        set +e
+        cargo "${args[@]}" --locked 2>&1 | tee "$out"
+        code=${PIPESTATUS[0]}
+        set -e
+        if [ "$code" -ne 0 ] && grep -q "because --locked was passed" "$out"; then
+          echo "::warning::cargo build --locked failed (Cargo.lock missing/out-of-date). Retrying without --locked."
+          cargo "${args[@]}"
+        elif [ "$code" -ne 0 ]; then
+          exit "$code"
+        fi
+
+        echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
     - name: Run labwired test (capture exit code)
       id: run
