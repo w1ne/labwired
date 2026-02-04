@@ -8,9 +8,11 @@ LabWired is a next-generation simulation platform designed to bridge the gap bet
 **Key Features:**
 - **Declarative Configuration**: Define Chips and Boards in YAML (including memory maps and peripherals).
 - **System Services**: Full support for SysTick, Vector Table Boot, and Exception Handling.
+- **Core Peripheral Ecosystem**: STM32F1-compatible GPIO, RCC, Timers, I2C, and SPI models.
+- **Advanced Debugging**: Instruction-level execution tracing and simulation step control.
 - **Functional Stubbing**: Mock external sensors and devices without complex emulation.
 - **High Performance**: Native Rust implementation (`labwired-core`).
-- **Cloud Ready**: Designed for headless execution in CI/CD pipelines.
+- **HAL Compatible**: Supports running binaries built with standard `stm32f1xx-hal`.
 
 ## 🏗 Architecture
 The project is organized as a Rust Workspace:
@@ -66,8 +68,16 @@ INFO labwired: Starting LabWired Simulator
 INFO labwired: Loading system manifest: "system.yaml"
 INFO labwired: Loading chip descriptor: "configs/chips/stm32f103.yaml"
 INFO labwired: Loading firmware: "..."
-Hello, LabWired!
+INFO labwired: Firmware Loaded Successfully!
+INFO labwired: Entry Point: 0x8000000
+INFO labwired: Starting Simulation...
+INFO labwired: Initial PC: 0x8000000, SP: 0x20002000
+INFO labwired: Running for 20000 steps...
 INFO labwired: Simulation loop finished (demo).
+INFO labwired: Final PC: 0x8000010
+INFO labwired: Total Instructions: 1540
+INFO labwired: Total Cycles: 1540
+INFO labwired: Average IPS: 125432.12
 ```
 
 ## 🤝 Development Workflow

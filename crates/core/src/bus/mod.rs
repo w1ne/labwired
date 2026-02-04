@@ -1,9 +1,11 @@
 use crate::memory::LinearMemory;
-use crate::{SimResult, SimulationError, Peripheral, Bus};
 use crate::peripherals::nvic::NvicState;
-use std::sync::Arc;
+use crate::peripherals::uart::Uart;
+use crate::{Bus, Peripheral, SimResult, SimulationError};
+use labwired_config::{parse_size, ChipDescriptor, SystemManifest};
 use std::sync::atomic::Ordering;
-use labwired_config::{ChipDescriptor, SystemManifest, parse_size};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub struct PeripheralEntry {
     pub name: String,
@@ -20,12 +22,18 @@ pub struct SystemBus {
     pub nvic: Option<Arc<NvicState>>,
 }
 
+impl Default for SystemBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SystemBus {
     pub fn new() -> Self {
         // Default initialization for tests
         Self {
             flash: LinearMemory::new(1024 * 1024, 0x0),
-            ram: LinearMemory::new(1024 * 1024, 0x2000_0000), 
+            ram: LinearMemory::new(1024 * 1024, 0x2000_0000),
             peripherals: vec![
                 PeripheralEntry {
                     name: "systick".to_string(),
@@ -40,16 +48,101 @@ impl SystemBus {
                     size: 0x1000,
                     irq: None,
                     dev: Box::new(crate::peripherals::uart::Uart::new()),
-                }
+                },
+                PeripheralEntry {
+                    name: "gpioa".to_string(),
+                    base: 0x4001_0800,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "gpiob".to_string(),
+                    base: 0x4001_0C00,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "gpioc".to_string(),
+                    base: 0x4001_1000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::gpio::GpioPort::new()),
+                },
+                PeripheralEntry {
+                    name: "rcc".to_string(),
+                    base: 0x4002_1000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::rcc::Rcc::new()),
+                },
+                PeripheralEntry {
+                    name: "tim2".to_string(),
+                    base: 0x4000_0000,
+                    size: 0x400,
+                    irq: Some(28),
+                    dev: Box::new(crate::peripherals::timer::Timer::new()),
+                },
+                PeripheralEntry {
+                    name: "tim3".to_string(),
+                    base: 0x4000_0400,
+                    size: 0x400,
+                    irq: Some(29),
+                    dev: Box::new(crate::peripherals::timer::Timer::new()),
+                },
+                PeripheralEntry {
+                    name: "i2c1".to_string(),
+                    base: 0x4000_5400,
+                    size: 0x400,
+                    irq: Some(31),
+                    dev: Box::new(crate::peripherals::i2c::I2c::new()),
+                },
+                PeripheralEntry {
+                    name: "i2c2".to_string(),
+                    base: 0x4000_5800,
+                    size: 0x400,
+                    irq: Some(33),
+                    dev: Box::new(crate::peripherals::i2c::I2c::new()),
+                },
+                PeripheralEntry {
+                    name: "spi1".to_string(),
+                    base: 0x4001_3000,
+                    size: 0x400,
+                    irq: Some(35),
+                    dev: Box::new(crate::peripherals::spi::Spi::new()),
+                },
+                PeripheralEntry {
+                    name: "spi2".to_string(),
+                    base: 0x4000_3800,
+                    size: 0x400,
+                    irq: Some(36),
+                    dev: Box::new(crate::peripherals::spi::Spi::new()),
+                },
             ],
             nvic: None,
+        }
+    }
+
+    /// Attach a UART TX capture sink to any UART peripherals on this bus.
+    ///
+    /// When `echo_stdout` is false, UART writes will no longer be printed to stdout.
+    pub fn attach_uart_tx_sink(&mut self, sink: Arc<Mutex<Vec<u8>>>, echo_stdout: bool) {
+        for p in &mut self.peripherals {
+            let Some(any) = p.dev.as_any_mut() else {
+                continue;
+            };
+            let Some(uart) = any.downcast_mut::<Uart>() else {
+                continue;
+            };
+            uart.set_sink(Some(sink.clone()), echo_stdout);
         }
     }
 
     pub fn from_config(chip: &ChipDescriptor, _manifest: &SystemManifest) -> anyhow::Result<Self> {
         let flash_size = parse_size(&chip.flash.size)?;
         let ram_size = parse_size(&chip.ram.size)?;
-        
+
         let mut bus = Self {
             flash: LinearMemory::new(flash_size as usize, chip.flash.base),
             ram: LinearMemory::new(ram_size as usize, chip.ram.base),
@@ -58,13 +151,25 @@ impl SystemBus {
         };
 
         for p_cfg in &chip.peripherals {
-            let mut dev: Box<dyn Peripheral> = match p_cfg.r#type.as_str() {
+            let dev: Box<dyn Peripheral> = match p_cfg.r#type.as_str() {
                 "uart" => Box::new(crate::peripherals::uart::Uart::new()),
                 "systick" => Box::new(crate::peripherals::systick::Systick::new()),
-                _ => continue, // Unsupported for now
+                "gpio" => Box::new(crate::peripherals::gpio::GpioPort::new()),
+                "rcc" => Box::new(crate::peripherals::rcc::Rcc::new()),
+                "timer" => Box::new(crate::peripherals::timer::Timer::new()),
+                "i2c" => Box::new(crate::peripherals::i2c::I2c::new()),
+                "spi" => Box::new(crate::peripherals::spi::Spi::new()),
+                other => {
+                    tracing::warn!(
+                        "Unsupported peripheral type '{}' for id '{}'; skipping",
+                        other,
+                        p_cfg.id
+                    );
+                    continue;
+                }
             };
-            
-            // Apply external device stubs if connected to this peripheral ID
+
+            let mut dev = dev;
             for ext in &_manifest.external_devices {
                 if ext.connection == p_cfg.id {
                     tracing::info!("Stubbing {} on {}", ext.id, p_cfg.id);
@@ -74,13 +179,26 @@ impl SystemBus {
                 }
             }
 
-            // Map interrupt numbers based on ID for now (simplified)
-            let irq = if p_cfg.id == "systick" { Some(15) } else { None };
+            // Map peripheral window size + IRQ from descriptor when provided.
+            // Defaults keep older descriptors working.
+            let size = if let Some(size) = &p_cfg.size {
+                parse_size(size)?
+            } else {
+                0x1000 // Default 4KB page
+            };
+
+            let irq = if let Some(irq) = p_cfg.irq {
+                Some(irq)
+            } else if p_cfg.id == "systick" {
+                Some(15)
+            } else {
+                None
+            };
 
             bus.peripherals.push(PeripheralEntry {
                 name: p_cfg.id.clone(),
                 base: p_cfg.base_address,
-                size: 0x1000, // Default 4KB page
+                size,
                 irq,
                 dev,
             });
@@ -126,7 +244,7 @@ impl crate::Bus for SystemBus {
         if let Some(val) = self.flash.read_u8(addr) {
             return Ok(val);
         }
-        
+
         // Dynamic Peripherals
         for p in &self.peripherals {
             if addr >= p.base && addr < p.base + p.size {
@@ -157,7 +275,7 @@ impl crate::Bus for SystemBus {
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
         let mut interrupts = Vec::new();
-        
+
         // 1. Collect IRQs from peripherals and pend them in NVIC
         for p in &mut self.peripherals {
             if p.dev.tick() {
@@ -180,11 +298,12 @@ impl crate::Bus for SystemBus {
                 }
             }
         }
-        
+
         // 2. Scan NVIC for all Pending & Enabled interrupts
         if let Some(nvic) = &self.nvic {
             for idx in 0..8 {
-                let mask = nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
+                let mask =
+                    nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
                 if mask != 0 {
                     for bit in 0..32 {
                         if (mask & (1 << bit)) != 0 {
@@ -196,7 +315,7 @@ impl crate::Bus for SystemBus {
                 }
             }
         }
-        
+
         interrupts
     }
 }

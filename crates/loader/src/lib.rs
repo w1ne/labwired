@@ -1,18 +1,18 @@
-use std::path::Path;
-use std::fs;
-use anyhow::{Context, Result, anyhow};
-use goblin::elf::Elf;
+use anyhow::{anyhow, Context, Result};
 use goblin::elf::program_header::PT_LOAD;
-use tracing::{info, debug, warn};
-use labwired_core::memory::{ProgramImage, Segment};
+use goblin::elf::Elf;
+use labwired_core::memory::ProgramImage;
+use std::fs;
+use std::path::Path;
+use tracing::{debug, info, warn};
 
 pub fn load_elf(path: &Path) -> Result<ProgramImage> {
     let buffer = fs::read(path).with_context(|| format!("Failed to read ELF file: {:?}", path))?;
 
     let elf = Elf::parse(&buffer).context("Failed to parse ELF binary")?;
-    
+
     info!("ELF Entry Point: {:#x}", elf.entry);
-    
+
     let mut program_image = ProgramImage::new(elf.entry);
 
     for ph in elf.program_headers {
@@ -26,7 +26,10 @@ pub fn load_elf(path: &Path) -> Result<ProgramImage> {
                 continue;
             }
 
-            debug!("Found Loadable Segment: Addr={:#x}, Size={} bytes, Offset={:#x}", start_addr, size, offset);
+            debug!(
+                "Found Loadable Segment: Addr={:#x}, Size={} bytes, Offset={:#x}",
+                start_addr, size, offset
+            );
 
             if offset + size > buffer.len() {
                 return Err(anyhow!("Segment out of bounds in ELF file"));
@@ -36,7 +39,7 @@ pub fn load_elf(path: &Path) -> Result<ProgramImage> {
             program_image.add_segment(start_addr, segment_data);
         }
     }
-    
+
     if program_image.segments.is_empty() {
         warn!("No loadable segments found in ELF file");
     }

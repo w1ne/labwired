@@ -1,7 +1,7 @@
-use crate::{Cpu, Bus, SimResult};
 use crate::decoder::{self, Instruction};
-use std::sync::Arc;
+use crate::{Bus, Cpu, SimResult, SimulationObserver};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 #[derive(Debug, Default)]
 pub struct CortexM {
@@ -34,24 +34,48 @@ impl CortexM {
 
     fn read_reg(&self, n: u8) -> u32 {
         match n {
-            0 => self.r0, 1 => self.r1, 2 => self.r2, 3 => self.r3,
-            4 => self.r4, 5 => self.r5, 6 => self.r6, 7 => self.r7,
-            8 => self.r8, 9 => self.r9, 10 => self.r10, 11 => self.r11,
-            12 => self.r12, 13 => self.sp, 14 => self.lr, 15 => self.pc,
+            0 => self.r0,
+            1 => self.r1,
+            2 => self.r2,
+            3 => self.r3,
+            4 => self.r4,
+            5 => self.r5,
+            6 => self.r6,
+            7 => self.r7,
+            8 => self.r8,
+            9 => self.r9,
+            10 => self.r10,
+            11 => self.r11,
+            12 => self.r12,
+            13 => self.sp,
+            14 => self.lr,
+            15 => self.pc,
             _ => 0,
         }
     }
-    
+
     fn write_reg(&mut self, n: u8, val: u32) {
         match n {
-            0 => self.r0 = val, 1 => self.r1 = val, 2 => self.r2 = val, 3 => self.r3 = val,
-            4 => self.r4 = val, 5 => self.r5 = val, 6 => self.r6 = val, 7 => self.r7 = val,
-            8 => self.r8 = val, 9 => self.r9 = val, 10 => self.r10 = val, 11 => self.r11 = val,
-            12 => self.r12 = val, 13 => self.sp = val, 14 => self.lr = val, 15 => self.pc = val,
-            _ => {},
+            0 => self.r0 = val,
+            1 => self.r1 = val,
+            2 => self.r2 = val,
+            3 => self.r3 = val,
+            4 => self.r4 = val,
+            5 => self.r5 = val,
+            6 => self.r6 = val,
+            7 => self.r7 = val,
+            8 => self.r8 = val,
+            9 => self.r9 = val,
+            10 => self.r10 = val,
+            11 => self.r11 = val,
+            12 => self.r12 = val,
+            13 => self.sp = val,
+            14 => self.lr = val,
+            15 => self.pc = val,
+            _ => {}
         }
     }
-    
+
     fn update_nz(&mut self, result: u32) {
         let n = (result >> 31) & 1;
         let z = if result == 0 { 1 } else { 0 };
@@ -59,13 +83,13 @@ impl CortexM {
         self.xpsr &= !(0xC000_0000);
         self.xpsr |= (n << 31) | (z << 30);
     }
-    
+
     fn update_nzcv(&mut self, result: u32, carry: bool, overflow: bool) {
         let n = (result >> 31) & 1;
         let z = if result == 0 { 1 } else { 0 };
         let c = if carry { 1 } else { 0 };
         let v = if overflow { 1 } else { 0 };
-        
+
         self.xpsr &= !(0xF000_0000);
         self.xpsr |= (n << 31) | (z << 30) | (c << 29) | (v << 28);
     }
@@ -75,24 +99,24 @@ impl CortexM {
         let z = (self.xpsr >> 30) & 1 == 1;
         let c = (self.xpsr >> 29) & 1 == 1;
         let v = (self.xpsr >> 28) & 1 == 1;
-        
+
         match cond {
-            0x0 => z,             // EQ (Equal)
-            0x1 => !z,            // NE (Not Equal)
-            0x2 => c,             // CS/HS (Carry Set)
-            0x3 => !c,            // CC/LO (Carry Clear)
-            0x4 => n,             // MI (Minus)
-            0x5 => !n,            // PL (Plus)
-            0x6 => v,             // VS (Overflow)
-            0x7 => !v,            // VC (No Overflow)
-            0x8 => c && !z,       // HI (Unsigned Higher)
-            0x9 => !c || z,       // LS (Unsigned Lower or Same)
-            0xA => n == v,        // GE (Signed Greater or Equal)
-            0xB => n != v,        // LT (Signed Less Than)
-            0xC => !z && (n == v),// GT (Signed Greater Than)
-            0xD => z || (n != v), // LE (Signed Less or Equal)
-            0xE => true,          // AL (Always)
-            _ => false,           // Undefined/Reserved
+            0x0 => z,              // EQ (Equal)
+            0x1 => !z,             // NE (Not Equal)
+            0x2 => c,              // CS/HS (Carry Set)
+            0x3 => !c,             // CC/LO (Carry Clear)
+            0x4 => n,              // MI (Minus)
+            0x5 => !n,             // PL (Plus)
+            0x6 => v,              // VS (Overflow)
+            0x7 => !v,             // VC (No Overflow)
+            0x8 => c && !z,        // HI (Unsigned Higher)
+            0x9 => !c || z,        // LS (Unsigned Lower or Same)
+            0xA => n == v,         // GE (Signed Greater or Equal)
+            0xB => n != v,         // LT (Signed Less Than)
+            0xC => !z && (n == v), // GT (Signed Greater Than)
+            0xD => z || (n != v),  // LE (Signed Less or Equal)
+            0xE => true,           // AL (Always)
+            _ => false,            // Undefined/Reserved
         }
     }
 
@@ -109,7 +133,7 @@ impl CortexM {
     fn exception_return(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
         // Perform Unstacking
         let frame_ptr = self.sp;
-        
+
         self.r0 = bus.read_u32(frame_ptr as u64)?;
         self.r1 = bus.read_u32((frame_ptr + 4) as u64)?;
         self.r2 = bus.read_u32((frame_ptr + 8) as u64)?;
@@ -118,9 +142,9 @@ impl CortexM {
         self.lr = bus.read_u32((frame_ptr + 20) as u64)?;
         self.pc = bus.read_u32((frame_ptr + 24) as u64)?;
         self.xpsr = bus.read_u32((frame_ptr + 28) as u64)?;
-        
+
         self.sp = frame_ptr + 32;
-        
+
         tracing::info!("Exception return to {:#x}", self.pc);
         Ok(())
     }
@@ -133,29 +157,45 @@ impl Cpu for CortexM {
         self.pending_exceptions = 0;
     }
 
-    fn get_pc(&self) -> u32 { self.pc }
-    fn set_pc(&mut self, val: u32) { self.pc = val; }
-    fn set_sp(&mut self, val: u32) { self.sp = val; }
+    fn get_pc(&self) -> u32 {
+        self.pc
+    }
+    fn set_pc(&mut self, val: u32) {
+        self.pc = val;
+    }
+    fn set_sp(&mut self, val: u32) {
+        self.sp = val;
+    }
     fn set_exception_pending(&mut self, exception_num: u32) {
         if exception_num < 32 {
             self.pending_exceptions |= 1 << exception_num;
         }
     }
-    fn get_vtor(&self) -> u32 { self.vtor.load(Ordering::SeqCst) }
-    fn set_vtor(&mut self, val: u32) { self.vtor.store(val, Ordering::SeqCst); }
-    fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>) { self.vtor = vtor; }
+    fn get_vtor(&self) -> u32 {
+        self.vtor.load(Ordering::SeqCst)
+    }
+    fn set_vtor(&mut self, val: u32) {
+        self.vtor.store(val, Ordering::SeqCst);
+    }
+    fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>) {
+        self.vtor = vtor;
+    }
 
-    fn step(&mut self, bus: &mut dyn Bus) -> SimResult<()> {
+    fn step(
+        &mut self,
+        bus: &mut dyn Bus,
+        observers: &[Arc<dyn SimulationObserver>],
+    ) -> SimResult<()> {
         // Check for pending exceptions before executing instruction
         if self.pending_exceptions != 0 {
             // Find highest priority exception (Simplified: highest bit)
             let exception_num = 31 - self.pending_exceptions.leading_zeros();
             self.pending_exceptions &= !(1 << exception_num);
-            
+
             // Perform Stacking (Simplified)
             let sp = self.sp;
             let frame_ptr = sp.wrapping_sub(32);
-            
+
             // Stack: R0, R1, R2, R3, R12, LR, PC, xPSR
             let _ = bus.write_u32(frame_ptr as u64, self.r0);
             let _ = bus.write_u32((frame_ptr + 4) as u64, self.r1);
@@ -165,20 +205,25 @@ impl Cpu for CortexM {
             let _ = bus.write_u32((frame_ptr + 20) as u64, self.lr);
             let _ = bus.write_u32((frame_ptr + 24) as u64, self.pc);
             let _ = bus.write_u32((frame_ptr + 28) as u64, self.xpsr);
-            
+
             self.sp = frame_ptr;
-            
+
             // EXC_RETURN: Thread Mode, MSP
-            self.lr = 0xFFFF_FFF9; 
-            
+            self.lr = 0xFFFF_FFF9;
+
             // Jump to ISR handler
             let vtor = self.vtor.load(Ordering::SeqCst);
             let vector_addr = vtor + (exception_num * 4);
             if let Ok(handler) = bus.read_u32(vector_addr as u64) {
                 self.pc = handler & !1;
-                tracing::info!("Exception {} trigger, jump to {:#x} (VTOR={:#x})", exception_num, self.pc, vtor);
+                tracing::info!(
+                    "Exception {} trigger, jump to {:#x} (VTOR={:#x})",
+                    exception_num,
+                    self.pc,
+                    vtor
+                );
             }
-            
+
             return Ok(());
         }
 
@@ -186,129 +231,139 @@ impl Cpu for CortexM {
         // Fetch 16-bit thumb instruction
         let fetch_pc = self.pc & !1;
         let opcode = bus.read_u16(fetch_pc as u64)?;
-        
+
+        for observer in observers {
+            observer.on_step_start(self.pc, opcode);
+        }
+
         // Decode
         let instruction = decoder::decode_thumb_16(opcode);
-        
-        tracing::debug!("PC={:#x}, Opcode={:#04x}, Instr={:?}", self.pc, opcode, instruction);
-        
+
+        tracing::debug!(
+            "PC={:#x}, Opcode={:#04x}, Instr={:?}",
+            self.pc,
+            opcode,
+            instruction
+        );
+
         // Execute
         let mut pc_increment = 2; // Default for 16-bit instruction
-        
+        let mut cycles = 1;
+
         match instruction {
-            Instruction::Nop => { /* Do nothing */ },
+            Instruction::Nop => { /* Do nothing */ }
             Instruction::MovImm { rd, imm } => {
                 self.write_reg(rd, imm as u32);
                 self.update_nz(imm as u32);
-            },
+            }
             Instruction::Branch { offset } => {
-                 let target = (self.pc as i32 + 4 + offset) as u32;
-                 self.pc = target;
-                 pc_increment = 0;
-            },
-            // Arithmetic 
+                let target = (self.pc as i32 + 4 + offset) as u32;
+                self.pc = target;
+                pc_increment = 0;
+            }
+            // Arithmetic
             Instruction::AddReg { rd, rn, rm } => {
                 let op1 = self.read_reg(rn);
                 let op2 = self.read_reg(rm);
                 let (res, c, v) = add_with_flags(op1, op2);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::AddImm3 { rd, rn, imm } => {
                 let op1 = self.read_reg(rn);
                 let (res, c, v) = add_with_flags(op1, imm as u32);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::AddImm8 { rd, imm } => {
                 let op1 = self.read_reg(rd);
                 let (res, c, v) = add_with_flags(op1, imm as u32);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::SubReg { rd, rn, rm } => {
                 let op1 = self.read_reg(rn);
                 let op2 = self.read_reg(rm);
                 let (res, c, v) = sub_with_flags(op1, op2);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::SubImm3 { rd, rn, imm } => {
                 let op1 = self.read_reg(rn);
                 let (res, c, v) = sub_with_flags(op1, imm as u32);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::SubImm8 { rd, imm } => {
                 let op1 = self.read_reg(rd);
                 let (res, c, v) = sub_with_flags(op1, imm as u32);
                 self.write_reg(rd, res);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::AddSp { imm } => {
                 let sp = self.read_reg(13).wrapping_add(imm as u32);
                 self.write_reg(13, sp);
-            },
+            }
             Instruction::SubSp { imm } => {
                 let sp = self.read_reg(13).wrapping_sub(imm as u32);
                 self.write_reg(13, sp);
-            },
+            }
             Instruction::AddRegHigh { rd, rm } => {
                 let val1 = self.read_reg(rd);
                 let val2 = self.read_reg(rm);
                 self.write_reg(rd, val1.wrapping_add(val2));
-            },
+            }
             Instruction::CmpImm { rn, imm } => {
                 let op1 = self.read_reg(rn);
                 let (res, c, v) = sub_with_flags(op1, imm as u32);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::CmpReg { rn, rm } => {
                 let op1 = self.read_reg(rn);
                 let op2 = self.read_reg(rm);
                 let (res, c, v) = sub_with_flags(op1, op2);
                 self.update_nzcv(res, c, v);
-            },
+            }
             Instruction::MovReg { rd, rm } => {
                 let val = self.read_reg(rm);
                 self.write_reg(rd, val);
-            },
+            }
             // Logic
             Instruction::And { rd, rm } => {
                 let res = self.read_reg(rd) & self.read_reg(rm);
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
+            }
             Instruction::Orr { rd, rm } => {
                 let res = self.read_reg(rd) | self.read_reg(rm);
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
+            }
             Instruction::Eor { rd, rm } => {
                 let res = self.read_reg(rd) ^ self.read_reg(rm);
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
+            }
             Instruction::Mvn { rd, rm } => {
                 let res = !self.read_reg(rm);
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
+            }
             Instruction::Mul { rd, rn } => {
                 let op1 = self.read_reg(rd);
                 let op2 = self.read_reg(rn);
                 let res = op1.wrapping_mul(op2);
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
-            
+            }
+
             Instruction::Cpsie => {
                 self.primask = false;
-            },
+            }
             Instruction::Cpsid => {
                 self.primask = true;
-            },
-            
+            }
+
             // Shifts
             Instruction::Lsl { rd, rm, imm } => {
                 let val = self.read_reg(rm);
@@ -316,23 +371,31 @@ impl Cpu for CortexM {
                 self.write_reg(rd, res);
                 self.update_nz(res);
                 // Note: Carry out not fully implemented for shifts yet
-            },
+            }
             Instruction::Lsr { rd, rm, imm } => {
                 let val = self.read_reg(rm);
-                let res = if imm == 0 { 0 } else { val.wrapping_shr(imm as u32) };
+                let res = if imm == 0 {
+                    0
+                } else {
+                    val.wrapping_shr(imm as u32)
+                };
                 // Actually LSR imm=0 is 32 in some contexts, but Thumb T1 usually:
                 // imm5=0 for LSL is imm=0. imm5=0 for LSR is imm=32.
-                // For MVP, letting wrapping_shr handle basics. 
+                // For MVP, letting wrapping_shr handle basics.
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
+            }
             Instruction::Asr { rd, rm, imm } => {
                 let val = self.read_reg(rm) as i32;
-                let res = (if imm == 0 { val >> 31 } else { val >> (imm as u32) }) as u32;
+                let res = (if imm == 0 {
+                    val >> 31
+                } else {
+                    val >> (imm as u32)
+                }) as u32;
                 self.write_reg(rd, res);
                 self.update_nz(res);
-            },
-            
+            }
+
             // Memory Operations (Word)
             Instruction::LdrImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
@@ -342,16 +405,16 @@ impl Cpu for CortexM {
                 } else {
                     tracing::error!("Bus Read Fault at {:#x}", addr);
                 }
-            },
+            }
             Instruction::StrImm { rt, rn, imm } => {
-                 let base = self.read_reg(rn);
-                 let addr = base.wrapping_add(imm as u32);
-                 let val = self.read_reg(rt);
-                 if let Err(_) = bus.write_u32(addr as u64, val) {
-                     tracing::error!("Bus Write Fault at {:#x}", addr);
-                 }
-            },
-            
+                let base = self.read_reg(rn);
+                let addr = base.wrapping_add(imm as u32);
+                let val = self.read_reg(rt);
+                if bus.write_u32(addr as u64, val).is_err() {
+                    tracing::error!("Bus Write Fault at {:#x}", addr);
+                }
+            }
+
             Instruction::LdrLit { rt, imm } => {
                 // ... (existing)
                 let pc_val = (self.pc & !3) + 4;
@@ -361,8 +424,8 @@ impl Cpu for CortexM {
                 } else {
                     tracing::error!("Bus Read Fault (LdrLit) at {:#x}", addr);
                 }
-            },
-            
+            }
+
             Instruction::LdrSp { rt, imm } => {
                 let addr = self.sp.wrapping_add(imm as u32);
                 if let Ok(val) = bus.read_u32(addr as u64) {
@@ -370,15 +433,15 @@ impl Cpu for CortexM {
                 } else {
                     tracing::error!("Bus Read Fault (LdrSp) at {:#x}", addr);
                 }
-            },
+            }
             Instruction::StrSp { rt, imm } => {
                 let addr = self.sp.wrapping_add(imm as u32);
                 let val = self.read_reg(rt);
-                if let Err(_) = bus.write_u32(addr as u64, val) {
+                if bus.write_u32(addr as u64, val).is_err() {
                     tracing::error!("Bus Write Fault (StrSp) at {:#x}", addr);
                 }
-            },
-            
+            }
+
             // Memory Operations (Byte)
             Instruction::LdrbImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
@@ -388,15 +451,15 @@ impl Cpu for CortexM {
                 } else {
                     tracing::error!("Bus Read Fault (LDRB) at {:#x}", addr);
                 }
-            },
+            }
             Instruction::StrbImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
                 let addr = base.wrapping_add(imm as u32);
                 let val = (self.read_reg(rt) & 0xFF) as u8;
-                if let Err(_) = bus.write_u8(addr as u64, val) {
+                if bus.write_u8(addr as u64, val).is_err() {
                     tracing::error!("Bus Write Fault (STRB) at {:#x}", addr);
                 }
-            },
+            }
             Instruction::LdrhImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
                 let addr = base.wrapping_add(imm as u32);
@@ -405,42 +468,46 @@ impl Cpu for CortexM {
                 } else {
                     tracing::error!("Bus Read Fault (LDRH) at {:#x}", addr);
                 }
-            },
+            }
             Instruction::StrhImm { rt, rn, imm } => {
                 let base = self.read_reg(rn);
                 let addr = base.wrapping_add(imm as u32);
                 let val = (self.read_reg(rt) & 0xFFFF) as u16;
-                if let Err(_) = bus.write_u16(addr as u64, val) {
+                if bus.write_u16(addr as u64, val).is_err() {
                     tracing::error!("Bus Write Fault (STRH) at {:#x}", addr);
                 }
-            },
+            }
 
             // Stack Operations
             Instruction::Push { registers, m } => {
                 let mut sp = self.read_reg(13);
                 // Cycle through R14(LR), R7..R0 high to low
-                
+
                 // If M (LR) is set, push LR first (highest address)
                 if m {
                     sp = sp.wrapping_sub(4);
                     let val = self.read_reg(14);
-                    if let Err(_) = bus.write_u32(sp as u64, val) { tracing::error!("Stack Overflow (PUSH LR)"); }
+                    if bus.write_u32(sp as u64, val).is_err() {
+                        tracing::error!("Stack Overflow (PUSH LR)");
+                    }
                 }
-                
+
                 // Registers R7 down to R0
                 for i in (0..=7).rev() {
                     if (registers & (1 << i)) != 0 {
                         sp = sp.wrapping_sub(4);
                         let val = self.read_reg(i);
-                        if let Err(_) = bus.write_u32(sp as u64, val) { tracing::error!("Stack Overflow (PUSH R{})", i); }
+                        if bus.write_u32(sp as u64, val).is_err() {
+                            tracing::error!("Stack Overflow (PUSH R{})", i);
+                        }
                     }
                 }
-                
+
                 self.write_reg(13, sp);
-            },
+            }
             Instruction::Pop { registers, p } => {
                 let mut sp = self.read_reg(13);
-                
+
                 // Registers R0 up to R7
                 for i in 0..=7 {
                     if (registers & (1 << i)) != 0 {
@@ -450,24 +517,24 @@ impl Cpu for CortexM {
                         sp = sp.wrapping_add(4);
                     }
                 }
-                
+
                 // If P (PC) is set, pop PC (lowest address?? No, highest)
-                // POP is inverse of PUSH. PUSH pushed LR last (lowest addr) ?? 
+                // POP is inverse of PUSH. PUSH pushed LR last (lowest addr) ??
                 // Wait. PUSH stores STMDB (Decrement Before). Highest reg = Highest address.
                 // R0 is lowest register. LR is highest.
                 // PUSH order: LR, R7, ... R0.
-                // Stack grows down. 
+                // Stack grows down.
                 // Low Addr [ R0 | R1 | ... | LR ] High Addr.
                 // So POP (LDMIA) should read: R0, ... R7, PC.
-                // My PUSH loop: 
+                // My PUSH loop:
                 // 1. If LR, sub 4, write LR. (Top of stack, highest addr - 4)
                 // 2. Loop 7 down to 0: sub 4, write Rx.
                 // Result: R0 is at current SP. LR is at SP + n*4.
-                
+
                 // My POP loop:
                 // 1. Loop 0 to 7: read, add 4. (Read R0, R1...)
                 // 2. If PC, read, add 4.
-                
+
                 if p {
                     if let Ok(val) = bus.read_u32(sp as u64) {
                         self.branch_to(val, bus)?;
@@ -475,9 +542,9 @@ impl Cpu for CortexM {
                     }
                     sp = sp.wrapping_add(4);
                 }
-                
+
                 self.write_reg(13, sp);
-            },
+            }
             Instruction::Ldm { rn, registers } => {
                 let mut base = self.read_reg(rn);
                 for i in 0..=7 {
@@ -489,66 +556,67 @@ impl Cpu for CortexM {
                     }
                 }
                 self.write_reg(rn, base);
-            },
+            }
             Instruction::Stm { rn, registers } => {
                 let mut base = self.read_reg(rn);
                 for i in 0..=7 {
                     if (registers & (1 << i)) != 0 {
                         let val = self.read_reg(i);
-                        if let Err(_) = bus.write_u32(base as u64, val) {
+                        if bus.write_u32(base as u64, val).is_err() {
                             tracing::error!("Bus Write Fault (STM) at {:#x}", base);
                         }
                         base = base.wrapping_add(4);
                     }
                 }
                 self.write_reg(rn, base);
-            },
-            
+            }
+
             // Control Flow
             Instruction::Bl { offset } => {
                 // BL: Branch with Link.
                 // LR = Next Instruction Address | 1 (Thumb bit)
-                let _next_pc = self.pc + 4; // 32-bit instruction size for BL? 
-                // Wait. BL is decoded as 32-bit.
-                // If we assume decode_thumb_16 handled a 32-bit stream, then PC increment should be adjusted?
-                // Or does `decode_thumb_16` return `BlPrefix` and then we handle it?
-                // The current `decoder` returns `Bl` with full offset if it sees the pair??
-                // NO. My decoder implementation for BL (in previous turn) was:
-                // `Instruction::Bl { offset: offset << 1 }`
-                // But `decode_thumb_16` ONLY sees 16 bits. It cannot see the second half!
-                // Real decoding of BL requires fetching 32 bits.
-                
+                let _next_pc = self.pc + 4; // 32-bit instruction size for BL?
+                                            // Wait. BL is decoded as 32-bit.
+                                            // If we assume decode_thumb_16 handled a 32-bit stream, then PC increment should be adjusted?
+                                            // Or does `decode_thumb_16` return `BlPrefix` and then we handle it?
+                                            // The current `decoder` returns `Bl` with full offset if it sees the pair??
+                                            // NO. My decoder implementation for BL (in previous turn) was:
+                                            // `Instruction::Bl { offset: offset << 1 }`
+                                            // But `decode_thumb_16` ONLY sees 16 bits. It cannot see the second half!
+                                            // Real decoding of BL requires fetching 32 bits.
+
                 // CRITICAL CORRECTION: `decode_thumb_16` is 16-bit.
                 // BL is 32-bit (encoded as two 16-bit halves).
                 // Fetch loop fetches 16 bits.
                 // 1. Fetch High Half (0xF0xx). Returns BlPrefix?
                 // 2. Fetch Low Half (0xF8xx). Combine?
-                
+
                 // My logic in decoder needs revisit. I put `Bl { offset }` thinking T1/T2 but BL is always 32-bit in Thumb-2.
                 // T1 encoding of BL doesn't exist as single 16-bit.
-                
+
                 // For now, let's just implement the execution stub assuming the decoder *somehow* gave us the full BL.
                 // But since the decoder only sees 16 bits, we need to handle the prefix state in the CPU loop!
-                
+
                 self.lr = (self.pc + 4) | 1;
                 let target = (self.pc as i32 + 4 + offset) as u32;
                 self.pc = target;
                 pc_increment = 0;
-            },
+            }
             Instruction::BranchCond { cond, offset } => {
                 if self.check_condition(cond) {
                     let target = (self.pc as i32 + 4 + offset) as u32;
                     self.pc = target;
                     pc_increment = 0;
                 }
-            },
+            }
             Instruction::Bx { rm } => {
                 let target = self.read_reg(rm);
                 self.branch_to(target, bus)?;
                 pc_increment = 0;
-            },
-            
+            }
+
             Instruction::Prefix32(h1) => {
+                cycles = 2;
                 // ... (existing)
                 // This is the first half of a 32-bit instruction
                 let next_pc = (self.pc & !1) + 2;
@@ -560,16 +628,17 @@ impl Cpu for CortexM {
                         let j1 = ((h2 >> 13) & 0x1) as i32;
                         let j2 = ((h2 >> 11) & 0x1) as i32;
                         let imm11 = (h2 & 0x7FF) as i32;
-                        
+
                         let i1 = (!(j1 ^ s)) & 0x1;
                         let i2 = (!(j2 ^ s)) & 0x1;
-                        
-                        let mut offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
+
+                        let mut offset =
+                            (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
                         // Sign extend from bit 24
                         if (offset & (1 << 24)) != 0 {
                             offset |= !0x01FF_FFFF;
                         }
-                        
+
                         self.lr = (self.pc + 4) | 1;
                         self.pc = (self.pc as i32 + 4 + offset) as u32;
                         pc_increment = 0;
@@ -580,7 +649,7 @@ impl Cpu for CortexM {
                         let imm3 = (h2 >> 12) & 0x7;
                         let rd = ((h2 >> 8) & 0xF) as u8;
                         let imm8 = h2 & 0xFF;
-                        
+
                         // Encoding: imm4 : i : imm3 : imm8
                         let imm16 = (imm4 << 12) | (i << 11) | (imm3 << 8) | imm8;
                         self.write_reg(rd, imm16 as u32);
@@ -592,7 +661,7 @@ impl Cpu for CortexM {
                         let imm3 = (h2 >> 12) & 0x7;
                         let rd = ((h2 >> 8) & 0xF) as u8;
                         let imm8 = h2 & 0xFF;
-                        
+
                         // Encoding: imm4 : i : imm3 : imm8
                         let imm16 = (imm4 << 12) | (i << 11) | (imm3 << 8) | imm8;
                         let old_val = self.read_reg(rd);
@@ -608,44 +677,113 @@ impl Cpu for CortexM {
                         let imm3 = (h2 >> 12) & 0x7;
                         let rd = ((h2 >> 8) & 0xF) as u8;
                         let imm8 = h2 & 0xFF;
-                        
+
                         // Decode modified immediate constant
                         // For MOV.W T3: imm12 = i:imm3:imm8
                         let imm12 = (i << 11) | (imm3 << 8) | imm8;
-                        
+
                         // Thumb expand immediate
                         let imm32 = thumb_expand_imm(imm12 as u32);
-                        
+
                         self.write_reg(rd, imm32);
                         pc_increment = 4;
+                    } else if (h1 & 0xFBE0) == 0xF060 && (h2 & 0x8000) == 0 {
+                        // MVN.W (move not immediate) T2 encoding
+                        // Pattern: 1111 0i00 011x xxxx 0xxx xxxx xxxx xxxx
+                        // Similar to MOV.W but inverts the result
+                        let i = (h1 >> 10) & 0x1;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm8 = h2 & 0xFF;
+
+                        let imm12 = (i << 11) | (imm3 << 8) | imm8;
+                        let imm32 = thumb_expand_imm(imm12 as u32);
+
+                        // MVN inverts all bits
+                        self.write_reg(rd, !imm32);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFB90 {
+                        // SDIV (signed division) T1 encoding
+                        // Pattern: 1111 1011 1001 xxxx 1111 xxxx 1111 xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let rm = (h2 & 0xF) as u8;
+
+                        let dividend = self.read_reg(rn) as i32;
+                        let divisor = self.read_reg(rm) as i32;
+
+                        let result = if divisor == 0 {
+                            0 // Division by zero returns 0 per ARMv7-M spec
+                        } else {
+                            dividend.wrapping_div(divisor) as u32
+                        };
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFBB0 {
+                        // UDIV (unsigned division) T1 encoding
+                        // Pattern: 1111 1011 1011 xxxx 1111 xxxx 1111 xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let rm = (h2 & 0xF) as u8;
+
+                        let dividend = self.read_reg(rn);
+                        let divisor = self.read_reg(rm);
+
+                        let result = if divisor == 0 {
+                            0 // Division by zero returns 0 per ARMv7-M spec
+                        } else {
+                            dividend / divisor
+                        };
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
                     } else {
-                        tracing::warn!("Unknown 32-bit instruction: {:#06x} {:#06x} at {:#x}", h1, h2, self.pc);
+                        // Enhanced unknown instruction diagnostics
+                        let pattern_hint = match h1 & 0xF800 {
+                            0xF000 => "32-bit Thumb-2 instruction",
+                            0xE800 => "Coprocessor or advanced SIMD",
+                            _ => "Unknown pattern",
+                        };
+
+                        tracing::warn!(
+                            "Unknown 32-bit instruction at PC={:#x}: {:#06x} {:#06x} ({})",
+                            self.pc,
+                            h1,
+                            h2,
+                            pattern_hint
+                        );
+                        tracing::debug!("  Instruction bits: h1={:#018b} h2={:#018b}", h1, h2);
                         pc_increment = 4;
                     }
                 } else {
                     tracing::error!("Bus Read Fault (32-bit suffix) at {:#x}", next_pc);
                     pc_increment = 2;
                 }
-            },
+            }
             Instruction::Movw { .. } | Instruction::Movt { .. } => {
                 unreachable!("32-bit instructions should be handled in Prefix32 path");
-            },
-            
+            }
+
             Instruction::Unknown(op) => {
                 tracing::warn!("Unknown instruction at {:#x}: Opcode {:#06x}", self.pc, op);
                 pc_increment = 2; // Skip 16-bit
             }
         }
-        
+
         self.pc = self.pc.wrapping_add(pc_increment);
-        
+
+        for observer in observers {
+            observer.on_step_end(cycles);
+        }
+
         Ok(())
     }
 }
 
 fn add_with_flags(op1: u32, op2: u32) -> (u32, bool, bool) {
     let (res, overflow1) = op1.overflowing_add(op2);
-    let carry = overflow1; 
+    let carry = overflow1;
     let neg_op1 = (op1 as i32) < 0;
     let neg_op2 = (op2 as i32) < 0;
     let neg_res = (res as i32) < 0;
@@ -655,7 +793,7 @@ fn add_with_flags(op1: u32, op2: u32) -> (u32, bool, bool) {
 
 fn sub_with_flags(op1: u32, op2: u32) -> (u32, bool, bool) {
     let (res, borrow) = op1.overflowing_sub(op2);
-    let carry = !borrow; 
+    let carry = !borrow;
     let neg_op1 = (op1 as i32) < 0;
     let neg_op2 = (op2 as i32) < 0;
     let neg_res = (res as i32) < 0;
@@ -667,7 +805,7 @@ fn sub_with_flags(op1: u32, op2: u32) -> (u32, bool, bool) {
 fn thumb_expand_imm(imm12: u32) -> u32 {
     let imm8 = imm12 & 0xFF;
     let rot = (imm12 >> 7) & 0x1F;
-    
+
     if rot == 0 {
         // No rotation
         match (imm12 >> 8) & 0x3 {
