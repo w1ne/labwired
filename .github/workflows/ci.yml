@@ -20,21 +20,28 @@ jobs:
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
+        targets: thumbv7m-none-eabi
         components: clippy, rustfmt
 
     - name: Check Formatting
       run: cargo fmt --all -- --check
 
-    - name: Clippy Linting
-      run: cargo clippy --workspace -- -D warnings
+    - name: Clippy (Host)
+      run: cargo clippy --workspace --exclude firmware -- -D warnings
+
+    - name: Clippy (Firmware)
+      run: cargo clippy -p firmware --target thumbv7m-none-eabi -- -D warnings
 
     - name: Security Audit
       run: |
         cargo install cargo-audit
         cargo audit
 
-    - name: Build
-      run: cargo build --workspace --verbose
+    - name: Build (Host)
+      run: cargo build --workspace --exclude firmware --verbose
+
+    - name: Build (Firmware)
+      run: cargo build -p firmware --target thumbv7m-none-eabi --verbose
 
     - name: Run Tests
       run: cargo test --workspace --verbose

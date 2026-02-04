@@ -67,9 +67,10 @@ Fixes: (Optional)
 2.  **Bump**: Update version numbers in `Cargo.toml` (workspace and crates).
 3.  **Changelog**: Update `CHANGELOG.md` with features and fixes.
 4.  **Verify**: Run the full regression suite, lints, and formatting check locally:
-    - `cargo test --workspace`
-    - `cargo clippy --workspace -- -D warnings`
-    - `cargo fmt --all -- --check`
+    - Host: `cargo test --workspace --exclude firmware`
+    - Firmware: `cargo build -p firmware --target thumbv7m-none-eabi`
+    - Lints: `cargo clippy --workspace --exclude firmware -- -D warnings`
+    - Format: `cargo fmt --all -- --check`
 5.  **Draft Release**: Create a GitHub Release draft using the **Verbatim** format above.
 6.  **Merge**:
     - Merge `release/vX.Y.Z` into `main`.
