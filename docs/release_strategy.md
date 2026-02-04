@@ -1,9 +1,7 @@
 # LabWired Release & Merging Strategy
 
 ## 1. Branching Model: Gitflow
-We follow the **Gitflow** branching strategy to manage releases and features efficiently.
-
-### Branches
+We follow the **Gitflow** branching strategy to manage releases and features efficiently. For more detailed rules and workflows, see the [Git Flow Guide](file:///home/andrii/Projects/labwired/docs/development/git_flow.md).
 - **`main`**: The production-ready state. Only merge from `release/*` or `hotfix/*`. Tags are created here.
 - **`develop`**: The integration branch for the next release. Features merge here.
 - **`feature/*`**: Individual work items. Created from `develop`, merged back to `develop`.
@@ -34,22 +32,51 @@ Every PR and commit to `develop`/`main` must pass the following automated gates:
 - **Tool**: `cargo-tarpaulin`.
 - **Enforcement**: CI will generate a coverage report. Significant drops in coverage should block the PR.
 
-## 3. Release Process
+### 3.2. Release Notes Format (Verbatim)
+When preparing a release, the following verbatim format MUST be used for the GitHub Release notes:
 
-### Steps to Release
+**Title**: `Release vX.Y.Z: <Short Summary of Key Changes>`
+
+**Body Structure**:
+```markdown
+Features:
+- <Feature 1 description>
+- <Feature 2 description>
+
+Improvements:
+- <Improvement 1 description>
+- <Improvement 2 description>
+
+Fixes: (Optional)
+- <Fix 1 description>
+```
+
+*Example:*
+> **Release v0.9.0: Variable PD Types and Integration Testing**
+>
+> Features:
+> - Variable PD types (1_V and 2_V) with dynamic length changes (2-32 bytes)
+> - Integration testing infrastructure (test_device_connection.py, test_integration.sh)
+>
+> Improvements:
+> - Enhanced Virtual Master with set_pd_length() method
+> - Comprehensive test suites for all M-sequence types
+
+### 3.3. Steps to Release
 1.  **Freeze**: Create a `release/vX.Y.Z` branch from `develop`.
 2.  **Bump**: Update version numbers in `Cargo.toml` (workspace and crates).
 3.  **Changelog**: Update `CHANGELOG.md` with features and fixes.
-4.  **Verify**: Run the full regression suite on the release branch.
-5.  **Merge**:
+4.  **Draft Release**: Create a GitHub Release draft using the **Verbatim** format above.
+5.  **Verify**: Run the full regression suite on the release branch.
+6.  **Merge**:
     - Merge `release/vX.Y.Z` into `main`.
     - Tag `main` with `vX.Y.Z`.
     - Merge `release/vX.Y.Z` back into `develop`.
-6.  **Deploy (Automated)**:
+7.  **Deploy (Automated)**:
     -   When `release/vX.Y.Z` is merged to `main` and a **Tag** `vX.Y.Z` is pushed:
     -   GitHub Actions (`release.yml`) triggers.
-    -   It builds the optimized release binary (`cargo build --release`).
-    -   It creates a GitHub Release draft and attaches the binary artifacts (e.g., `labwired-linux-x64.tar.gz`).
+    -   It builds the optimized release binary.
+    -   It attaches the binary artifacts to the draft created in step 4.
     -   Developers verify the draft and publish.
 
 ## 4. Coding Standards documentation

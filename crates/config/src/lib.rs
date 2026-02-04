@@ -65,12 +65,14 @@ impl SystemManifest {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TestInputs {
     pub firmware: String,
     pub system: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TestLimits {
     pub max_steps: u64,
     #[serde(default)]
@@ -88,16 +90,19 @@ pub enum StopReason {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct UartContainsAssertion {
     pub uart_contains: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct UartRegexAssertion {
     pub uart_regex: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct StopReasonAssertion {
     pub expected_stop_reason: StopReason,
 }
@@ -111,6 +116,7 @@ pub enum TestAssertion {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct TestScript {
     pub schema_version: String,
     pub inputs: TestInputs,

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-04
+
+### Added
+- **Testing Infrastructure**: 
+    - **Test Script Schema (YAML)**: Versioned schema for defining firmware tests with inputs (ELF/System), limits (steps/time), and assertions (UART contents, stop reasons).
+    - **CI Regression Gates**: Enforced workspace-wide testing and linting in GitHub Actions.
+    - **Pre-Release Verification**: Automated regression suite execution on release tags and PRs.
+- **Documentation**: 
+    - Updated `README.md` to reflect real-world division firmware behavior and IPS reporting.
+    - Updated `plan.md` Iteration 10 with implementation details for modular observability.
+
 ## [0.8.0] - 2026-02-03
 
 ### Added
