@@ -134,68 +134,254 @@ Deliver a standalone command-line tool (`sim-cli`) capable of loading an ELF bin
 - [x] Milestone: All 33 tests passing, v0.6.0 released
     - **Verified**: `cargo test` shows 33/33 passing, release tag v0.6.0 created and pushed to GitHub, CHANGELOG.md updated with all features.
 
-## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (Planned)
+## Iteration 9: Real Firmware Integration & Peripheral Ecosystem (In Progress)
 
 ### Objectives
 Bridge the "peripheral modeling bottleneck" by enabling execution of real-world HAL libraries and expanding the peripheral ecosystem.
 
-### Phase A: HAL Compatibility & Missing Instructions
-- [ ] Run STM32 HAL examples (GPIO blink, I2C sensor, SPI flash)
-- [ ] Identify and implement missing instructions discovered during execution
-  - [ ] Division instructions (`SDIV`, `UDIV`)
-  - [ ] Additional Thumb-2 encodings as needed
-  - [ ] Bit manipulation instructions (`BFI`, `UBFX`, etc.)
-- [ ] Add instruction execution tracing for debugging
-- [ ] Improve error messages for unknown instructions
+#### Milestone 9.5: Documentation & v0.7.0 Release
+- [x] Integrate core peripherals into standard SystemBus
+- [x] Document v0.7.0 features in CHANGELOG and README
+- [x] Resolve clippy lints and formatting across workspace
 
-### Phase B: Core Peripheral Models
-- [ ] Implement GPIO peripheral
-  - [ ] Memory-mapped registers (ODR, IDR, MODER, etc.)
-  - [ ] Pin state tracking and virtual wiring
-- [ ] Implement I2C peripheral (master mode)
-  - [ ] Standard I2C protocol state machine
-  - [ ] Virtual device attachment API
-- [ ] Implement SPI peripheral
-  - [ ] Full-duplex communication
-  - [ ] Virtual slave device support
-- [ ] Implement ADC peripheral (basic)
-  - [ ] Single-channel conversion
-  - [ ] Configurable virtual input values
-- [ ] Implement General Purpose Timers (TIM2/TIM3)
-  - [ ] Basic counting modes
-  - [ ] Interrupt generation on overflow
+**Acceptance Tests**
+- `cargo test` and `cargo clippy` pass.
+- Release tag `v0.7.0` created.
 
-### Phase C: Peripheral Architecture & Extensibility
-- [ ] Design pluggable peripheral API
-  - [ ] Trait-based peripheral interface
-  - [ ] Hot-swappable peripheral models
-- [ ] Create peripheral descriptor format
-  - [ ] YAML-based peripheral definitions
-  - [ ] Register map specifications
-- [ ] Document peripheral development guide
-  - [ ] Tutorial: Creating custom peripherals
-  - [ ] API reference documentation
+## Iteration 10: Advanced Debugging & Modular Observability
+**Objective**: Transition from "execution capable" to "debug ready" while enforcing a **strictly modular architecture**. Decouple introspection tools from the core execution engine.
 
-### Phase D: Developer Experience
-- [ ] Create example firmware projects
-  - [ ] "Blinky" with GPIO
-  - [ ] I2C temperature sensor reader
-  - [ ] SPI flash memory interface
-- [ ] Add execution visualization
-  - [ ] Instruction trace logging
-  - [ ] Register state snapshots
-  - [ ] Memory access history
-- [ ] Improve CLI usability
-  - [ ] Better error diagnostics
-  - [ ] Execution statistics (IPS, cycle count)
-  - [ ] Breakpoint support (basic)
+### Phase A: Modular Metrics & Performance
+- [x] **Decoupled Metric Collectors**: Implement a trait-based system for gathering execution stats.
+    - **Verified**: `SimulationObserver` in `crates/core/src/lib.rs` and `PerformanceMetrics` in `crates/core/src/metrics.rs` (released in `CHANGELOG.md` v0.8.0).
+- [x] Execution statistics (IPS, instruction count, total cycles)
+    - **Verified**: `PerformanceMetrics::{get_instructions,get_cycles,get_ips}` in `crates/core/src/metrics.rs`.
+- [x] Real-time IPS display in CLI
+    - **Verified**: Periodic IPS logging in `crates/cli/src/main.rs` gated by `--trace` (v0.8.0).
+- [ ] Per-peripheral cycle accounting (modular ticking costs)
+
+### Phase B: Advanced ISA & Peripheral Expansion
+- [ ] Bit field instructions (`BFI`, `BFC`, `SBFX`, `UBFX`)
+- [ ] Misc Thumb-2 instructions (`CLZ`, `RBIT`, `REV`, `REV16`)
+- [ ] **ADC Peripheral**: Implement as a modular, standalone component.
+
+### Phase C: Pluggable Observability Tools
+- [ ] **State Snapshots**: Modular format (JSON/YAML) for dumping CPU/Peripheral state.
+- [x] **Trace Hooks**: Implement a "subscriber" pattern for memory access and register changes.
+- [ ] Basic breakpoint support (PC-based halt)
+
+### Phase D: Ecosystem & Documentation
+- [ ] **Peripheral Development Tutorial**: Guide on creating decoupled, custom sensor mocks.
+- [ ] Example: STM32 I2C sensor interaction walkthrough.
+- [/] **Declarative Register Maps**: Formalize YAML specifications to decouple register logic from Rust code.
+- [ ] Documentation: "Getting Started with Real Firmware" guide.
 
 ### Success Criteria
-- [ ] Successfully run unmodified `stm32f1xx-hal` GPIO example
-- [ ] Execute I2C communication with virtual sensor
-- [ ] Demonstrate SPI flash read/write operations
-- [ ] Zero "unknown instruction" warnings for standard HAL usage
-- [ ] Documentation: "Getting Started with Real Firmware" guide
+- [ ] **Architectural Purity**: Core simulator loop remains unaware of metrics/tracing implementations.
+- [ ] Accurate IPS reporting during simulation.
+- [ ] Ability to dump full state to external files without stopping simulation.
+- [ ] Successful execution of ADC-based HAL examples.
 
-### Milestone
-**"Real Firmware Ready"**: The simulator can execute production-grade HAL libraries and serve as a viable alternative to physical development boards for early-stage firmware development.
+## Strategic Roadmap (Business-Aligned)
+
+This section translates the business research roadmap (“The Strategic Horizon of Firmware Simulation…”) into an executable engineering plan for LabWired. It starts at the product milestone level and decomposes down to implementation tasks.
+
+### Milestone Overview (High-Level)
+
+| Business iteration | Primary outcome | Main artifact | Notes / mapping to this repo plan |
+| :--- | :--- | :--- | :--- |
+| **1** | Standalone local runner | CLI runner | Largely covered by Iterations 1–8 in this file. |
+| **2** | CI-native execution | Test scripting + Docker + GitHub Action | Planned as Iteration 11. |
+| **3** | IDE-grade debugging | DAP server + VS Code extension | Planned as Iteration 12. |
+| **4** | Automated peripheral modeling | Model IR + ingestion + verified codegen + registry | Planned as Iteration 13. |
+| **5** | Enterprise-scale fleets + compliance | Orchestrator + dashboard + reporting | Planned as Iteration 14. |
+
+### Cross-Cutting Workstreams (Always-On)
+
+**Release Engineering & Quality**
+- [ ] Enforce CI quality gates: `cargo fmt -- --check`, `cargo clippy -- -D warnings`, `cargo test`, `cargo audit`, `cargo build` (see `docs/release_strategy.md`).
+- [ ] Maintain a per-release checklist: version bump, changelog entry, artifacts, docs update, demo verification.
+- [ ] Maintain a compatibility matrix (supported MCUs / boards / peripherals / known gaps).
+
+**Determinism & Correctness**
+- [ ] Provide deterministic execution controls (stable time base, bounded nondeterminism, reproducible scheduling).
+- [ ] Maintain a “golden reference” suite: periodic validation against physical boards for key behaviors.
+- [ ] Add regression fixtures per peripheral (reset values, side effects, IRQ behavior).
+
+**Security & Isolation (cloud-facing)**
+- [ ] Treat firmware as untrusted input: strict resource limits (CPU time, memory), crash containment, safe defaults.
+- [ ] Produce a threat model + mitigations before any multi-tenant execution (Iteration 14).
+
+**Observability**
+- [ ] Standardize run artifacts: logs, traces, configs, firmware hash, model versions, results summary.
+- [ ] Provide structured exports suitable for attaching to bugs and CI artifacts.
+
+**Market Validation & Adoption**
+- [ ] Define initial ICP + wedge use case (e.g., “run STM32 HAL firmware in CI without dev kits”).
+- [ ] Create a public demo + tutorial for the wedge use case (product-led growth).
+- [ ] Define the open-core boundary (what is OSS vs proprietary) and document the rationale.
+- [ ] Establish contribution guidelines for peripherals/models (review process, versioning, compatibility policy).
+
+**Economics & Compliance**
+- [ ] Define pricing metrics early (seats vs minutes vs storage) and instrument COGS per run.
+- [ ] Start an “enterprise readiness” checklist ahead of Iteration 14 (RBAC, audit logs, retention, SOC2 plan, ISO 26262 evidence scope).
+
+## Iteration 11: Headless CI Integration & Test Runner (Business Iteration 2)
+**Objective**: Make simulation a deterministic, scriptable CI primitive with machine-readable outputs and drop-in workflows for GitHub/GitLab.
+
+### Why this iteration is next (Repo Reality Check)
+- The current `labwired` CLI is optimized for interactive runs (logs + demo loop) and does not yet provide:
+  - Deterministic, machine-readable results (JSON/JUnit).
+  - A stable “test script” contract with assertions.
+  - Standardized exit codes suitable for CI.
+  - Structured artifact bundles (UART log, configs, firmware hash).
+
+### Phase A: Test Script Specification (YAML)
+- [ ] Define a stable test schema (YAML recommended):
+  - [ ] Inputs: firmware path, system config, optional assets (e.g., flash images).
+  - [ ] Limits: max cycles, wall-clock timeout, max UART bytes.
+  - [ ] Assertions: UART contains/regex, expected exit code, “no hardfault”.
+  - [ ] Optional actions: inject UART RX, toggle GPIO, trigger IRQ at time T.
+- [ ] Implement schema validation with actionable error messages.
+- [ ] Add a version field (`schema_version`) and compatibility policy.
+
+### Phase B: Headless Runner Semantics
+- [ ] Add a dedicated runner mode/subcommand (proposed: `labwired test --script <yaml>`).
+- [ ] Implement deterministic stop conditions (assertions + timeouts + “no progress”/hang detection).
+- [ ] Standardize exit codes (`0` pass, `1` assertion failure, `2` infra/config error, `3` simulation/runtime error).
+- [ ] Ensure a run is reproducible from artifacts (firmware hash + system + script).
+
+### Phase C: Reporting for CI Systems
+- [ ] Emit a JSON summary (pass/fail, duration, cycles, key assertions).
+- [ ] Emit JUnit XML (optional) for CI test reporting.
+- [ ] Emit an artifact bundle (UART log, structured trace if enabled, configs).
+- [ ] Make UART output capturable as a first-class artifact (stdout streaming remains optional).
+
+### Phase D: Distribution & Automation
+- [ ] Publish a minimal Docker image for CI use (non-root runtime).
+- [ ] Define a multi-arch build plan (x86_64 + ARM64) where feasible.
+- [ ] Create an official GitHub Action wrapper (inputs: firmware/system/script; outputs: artifact paths + summary).
+- [ ] Provide ready-to-copy workflows for GitHub Actions and GitLab CI.
+
+### Phase E: Adoption (CI Wedge)
+- [ ] Add a small catalog of CI-ready examples (one pass + one fail) and document them.
+- [ ] Publish “hardware-in-the-loop replacement” reference workflows (with caching + artifact upload).
+
+### Success Criteria
+- [ ] Users can run the same test locally and in CI and get identical outcomes (pass/fail + logs + JSON summary).
+- [ ] GitHub Action runs a sample project and publishes artifacts on both success and failure.
+
+## Iteration 12: Interactive Debugging (DAP) (Business Iteration 3)
+**Objective**: Provide IDE-grade debugging (breakpoints/step/inspect) via the Debug Adapter Protocol, without requiring physical probes.
+
+### Phase A: Debugging Contract
+- [ ] Define baseline debugging mode (instruction-level stepping).
+- [ ] Define simulator control API for debugging (start/pause/step/read regs/read mem).
+- [ ] Decide symbolization strategy (ELF symbols required; DWARF optional enhancement).
+
+### Phase B: DAP Server (Core)
+- [ ] Implement required DAP requests:
+  - [ ] `initialize`, `launch/attach`, `setBreakpoints`, `configurationDone`.
+  - [ ] `continue`, `next/stepIn/stepOut`, `pause`.
+  - [ ] `stackTrace`, `scopes`, `variables`.
+  - [ ] `readMemory` (and optionally `writeMemory` behind a flag).
+- [ ] Implement a deterministic breakpoint engine:
+  - [ ] PC breakpoints.
+  - [ ] (Later) data watchpoints.
+
+### Phase C: Symbolization & Source Mapping
+- [ ] Parse ELF symbols and expose PC → function name.
+- [ ] Provide a disassembly view when sources are unavailable.
+- [ ] If debug info exists, map PC → file:line for improved UX.
+
+### Phase D: VS Code Extension
+- [ ] Provide a minimal VS Code extension to:
+  - [ ] Launch the runner with correct flags.
+  - [ ] Connect to the DAP server.
+  - [ ] Provide launch configuration templates (`launch.json`).
+- [ ] Ship a demo project that can be debugged in under 5 minutes.
+
+### Phase E: Validation & Docs
+- [ ] Add “debug smoke tests” (breakpoints hit deterministically; register/memory reads match expected state).
+- [ ] Publish “Debug without hardware” tutorial (VS Code) and a short walkthrough outline.
+
+### Success Criteria
+- [ ] A user can set breakpoints in startup code and an IRQ handler and inspect registers reliably.
+- [ ] Debug sessions are deterministic across repeated runs for the same firmware/config.
+
+## Iteration 13: Asset Foundry (AI Modeling) (Business Iteration 4)
+**Objective**: Break the peripheral modeling bottleneck by introducing a validated, versioned model pipeline (SVD/PDF → IR → verified codegen → registry).
+
+### Phase A: Model Intermediate Representation (IR)
+- [ ] Define a strict IR for peripherals:
+  - [ ] Registers, fields, reset values, access types, side effects.
+  - [ ] Interrupt lines and trigger conditions.
+  - [ ] Timing hooks (what changes per tick).
+- [ ] Define a compatibility policy (required vs best-effort behaviors).
+
+### Phase B: Ingestion
+- [ ] SVD ingestion:
+  - [ ] Parse SVD into IR.
+  - [ ] Validate field widths, overlaps, reset values.
+- [ ] Datasheet/PDF ingestion:
+  - [ ] Extract text + tables.
+  - [ ] Chunk + index for retrieval (RAG-ready).
+
+### Phase C: AI Synthesis (RAG)
+- [ ] Define prompts that output structured IR deltas (not raw Rust code).
+- [ ] Build retrieval flows for key semantics:
+  - [ ] Write-1-to-clear / set-on-event behaviors.
+  - [ ] IRQ set/clear conditions and status flags.
+- [ ] Build an evaluation harness (golden peripherals) to measure accuracy before widening scope.
+
+### Phase D: Verification & Code Generation
+- [ ] Generate SystemRDL from IR and validate it.
+- [ ] Generate Rust peripheral models deterministically from IR/SystemRDL.
+- [ ] Gate publishing on verification (schema + RDL + compile + unit tests + simulation tests).
+
+### Phase E: Model Registry & Distribution
+- [ ] Version and sign models (hash inputs + artifact; store provenance).
+- [ ] Define upgrade and breaking-change semantics.
+- [ ] Provide a community submission workflow and quality tiers (community vs verified).
+
+### Success Criteria
+- [ ] A user can ingest an SVD + a datasheet and obtain a compiled model plugin with a provenance record.
+- [ ] Verified models are reproducible and pass an automated behavioral test suite.
+
+## Iteration 14: Enterprise Fleet Management (Business Iteration 5)
+**Objective**: Deliver multi-tenant, large-scale parallel simulation with fleet observability, metering, and compliance-oriented reporting.
+
+### Phase A: Product & Tenancy Model
+- [ ] Define tenancy hierarchy (org → projects → runs) and RBAC.
+- [ ] Define a run lifecycle API (submit → schedule → execute → collect → report).
+- [ ] Implement metering (simulation minutes, storage, concurrency).
+
+### Phase B: Orchestration & Isolation
+- [ ] Containerize the runner for cloud execution.
+- [ ] Implement scheduling primitives (queue, priorities, concurrency caps, retries).
+- [ ] Enforce strict isolation (CPU/RAM limits; default deny outbound network; artifact-only ingress/egress).
+- [ ] (Optional) Define a Firecracker MicroVM isolation mode for high-assurance workloads.
+
+### Phase C: Artifact Store & Fleet Observability
+- [ ] Store per-run artifacts (logs, traces, configs, firmware hash, model versions, summary).
+- [ ] Define retention policies and export/download capabilities.
+- [ ] Add fleet-level monitoring (SLOs/alerts/cost visibility).
+
+### Phase D: Fleet Dashboard (Web)
+- [ ] Implement auth and enterprise controls (SSO OIDC/SAML, audit logs; SCIM optional).
+- [ ] Provide run views (filters by branch/commit/status) and artifact viewers (UART logs, traces).
+- [ ] Add linkable run “snapshots” for collaboration.
+
+### Phase E: Compliance & Reporting
+- [ ] Implement deterministic fault injection scenarios (sensor disconnect, voltage drop, memory faults).
+- [ ] Integrate coverage reporting and aggregate per build.
+- [ ] Generate ISO 26262-oriented evidence packs (traceability + reproducibility + tool qualification evidence scope).
+
+### Phase F: Enterprise Rollout
+- [ ] Run 1–3 design partner pilots with explicit success criteria and ROI model.
+- [ ] Define support model (SLA tiers, incident response, private support channels).
+- [ ] Validate unit economics under production-like load (cost per simulated minute at target concurrency).
+
+### Success Criteria
+- [ ] Fleet executes large test matrices reproducibly and produces auditable evidence artifacts.
+- [ ] Cost/metering is measurable and aligned with pricing metrics.

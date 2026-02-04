@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn write_temp_file(prefix: &str, contents: &str) -> PathBuf {
@@ -45,8 +45,11 @@ fn test_cli_test_mode_passes_with_zero_steps() {
     let script = write_temp_file(
         "script-pass",
         r#"
-schema_version: 1
-max_steps: 0
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/dummy.elf"
+limits:
+  max_steps: 1
 assertions: []
 "#,
     );
@@ -55,7 +58,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -71,8 +74,11 @@ fn test_cli_test_mode_assertion_fail_exit_1() {
     let script = write_temp_file(
         "script-fail",
         r#"
-schema_version: 1
-max_steps: 0
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/dummy.elf"
+limits:
+  max_steps: 1
 assertions:
   - uart_contains: "this string will not be present"
 "#,
@@ -82,7 +88,7 @@ assertions:
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -130,8 +136,11 @@ chip: "chip.yaml"
     let script = write_temp_file(
         "script-runtime",
         r#"
-schema_version: 1
-max_steps: 1
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/dummy.elf"
+limits:
+  max_steps: 1
 assertions: []
 "#,
     );
@@ -140,7 +149,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--system",
             system_path.to_str().unwrap(),
             "--script",

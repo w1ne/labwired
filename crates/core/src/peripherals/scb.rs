@@ -1,6 +1,6 @@
-use crate::{SimResult, Peripheral};
-use std::sync::Arc;
+use crate::{Peripheral, SimResult};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 /// System Control Block (SCB) mock.
 /// Handles VTOR relocation and other system-level controls.

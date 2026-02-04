@@ -1,0 +1,8 @@
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/dummy.elf"
+limits:
+  max_steps: 10
+assertions:
+  - uart_contains: "Hello, LabWired!"
+
