@@ -21,5 +21,6 @@ fn main() -> ! {
         core::ptr::write_volatile(0x2000_0004 as *mut i32, f);
     }
 
+    #[allow(clippy::empty_loop)]
     loop {}
 }
