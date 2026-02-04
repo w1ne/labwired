@@ -13,6 +13,10 @@ peripherals:
   - id: "uart1"
     type: "uart"
     base_address: 0x40013800
+    size: "1KB"
+    irq: 37
   - id: "uart2"
     type: "uart"
     base_address: 0x40004400
+    size: "1KB"
+    irq: 38

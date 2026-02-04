@@ -4,7 +4,11 @@ pub mod decoder;
 pub mod memory;
 pub mod peripherals;
 pub mod metrics;
+pub mod signals;
+pub mod interrupt;
+pub mod multi_core;
 
+use std::any::Any;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
@@ -47,6 +51,12 @@ pub trait Peripheral: std::fmt::Debug + Send {
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
     fn tick(&mut self) -> bool {
         false
+    }
+    fn as_any(&self) -> Option<&dyn Any> {
+        None
+    }
+    fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
+        None
     }
 }
 
@@ -94,34 +104,63 @@ pub struct Machine<C: Cpu> {
 
 impl<C: Cpu + Default> Machine<C> {
     pub fn new() -> Self {
+        Self::with_bus(bus::SystemBus::new())
+    }
+
+    /// Construct a machine around an existing bus, and ensure core system peripherals
+    /// (SCB + NVIC) are installed and wired up (shared VTOR + NVIC pending state).
+    pub fn with_bus(mut bus: bus::SystemBus) -> Self {
         let vtor = Arc::new(AtomicU32::new(0));
         let nvic_state = Arc::new(peripherals::nvic::NvicState::default());
 
         let mut cpu = C::default();
         cpu.set_shared_vtor(vtor.clone());
 
-        let mut bus = bus::SystemBus::new();
         bus.nvic = Some(nvic_state.clone());
 
-        // Register SCB
+        // Ensure SCB exists (VTOR relocation)
         let scb = peripherals::scb::Scb::new(vtor);
-        bus.peripherals.push(bus::PeripheralEntry {
-            name: "scb".to_string(),
-            base: 0xE000ED00,
-            size: 0x40,
-            irq: None,
-            dev: Box::new(scb),
-        });
+        if let Some(p) = bus
+            .peripherals
+            .iter_mut()
+            .find(|p| p.name == "scb" || p.base == 0xE000_ED00)
+        {
+            p.name = "scb".to_string();
+            p.base = 0xE000_ED00;
+            p.size = 0x40;
+            p.irq = None;
+            p.dev = Box::new(scb);
+        } else {
+            bus.peripherals.push(bus::PeripheralEntry {
+                name: "scb".to_string(),
+                base: 0xE000_ED00,
+                size: 0x40,
+                irq: None,
+                dev: Box::new(scb),
+            });
+        }
 
-        // Register NVIC
+        // Ensure NVIC exists (shared pending/enabled state)
         let nvic = peripherals::nvic::Nvic::new(nvic_state);
-        bus.peripherals.push(bus::PeripheralEntry {
-            name: "nvic".to_string(),
-            base: 0xE000E100,
-            size: 0x400,
-            irq: None,
-            dev: Box::new(nvic),
-        });
+        if let Some(p) = bus
+            .peripherals
+            .iter_mut()
+            .find(|p| p.name == "nvic" || p.base == 0xE000_E100)
+        {
+            p.name = "nvic".to_string();
+            p.base = 0xE000_E100;
+            p.size = 0x400;
+            p.irq = None;
+            p.dev = Box::new(nvic);
+        } else {
+            bus.peripherals.push(bus::PeripheralEntry {
+                name: "nvic".to_string(),
+                base: 0xE000_E100,
+                size: 0x400,
+                irq: None,
+                dev: Box::new(nvic),
+            });
+        }
 
         Self { cpu, bus, observers: Vec::new() }
     }

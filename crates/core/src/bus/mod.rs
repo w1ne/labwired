@@ -1,9 +1,11 @@
 use crate::memory::LinearMemory;
 use crate::peripherals::nvic::NvicState;
+use crate::peripherals::uart::Uart;
 use crate::{Bus, Peripheral, SimResult, SimulationError};
 use labwired_config::{parse_size, ChipDescriptor, SystemManifest};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 pub struct PeripheralEntry {
     pub name: String,
@@ -122,6 +124,21 @@ impl SystemBus {
         }
     }
 
+    /// Attach a UART TX capture sink to any UART peripherals on this bus.
+    ///
+    /// When `echo_stdout` is false, UART writes will no longer be printed to stdout.
+    pub fn attach_uart_tx_sink(&mut self, sink: Arc<Mutex<Vec<u8>>>, echo_stdout: bool) {
+        for p in &mut self.peripherals {
+            let Some(any) = p.dev.as_any_mut() else {
+                continue;
+            };
+            let Some(uart) = any.downcast_mut::<Uart>() else {
+                continue;
+            };
+            uart.set_sink(Some(sink.clone()), echo_stdout);
+        }
+    }
+
     pub fn from_config(chip: &ChipDescriptor, _manifest: &SystemManifest) -> anyhow::Result<Self> {
         let flash_size = parse_size(&chip.flash.size)?;
         let ram_size = parse_size(&chip.ram.size)?;
@@ -162,8 +179,17 @@ impl SystemBus {
                 }
             }
 
-            // Map interrupt numbers based on ID for now (simplified)
-            let irq = if p_cfg.id == "systick" {
+            // Map peripheral window size + IRQ from descriptor when provided.
+            // Defaults keep older descriptors working.
+            let size = if let Some(size) = &p_cfg.size {
+                parse_size(size)?
+            } else {
+                0x1000 // Default 4KB page
+            };
+
+            let irq = if let Some(irq) = p_cfg.irq {
+                Some(irq)
+            } else if p_cfg.id == "systick" {
                 Some(15)
             } else {
                 None
@@ -172,7 +198,7 @@ impl SystemBus {
             bus.peripherals.push(PeripheralEntry {
                 name: p_cfg.id.clone(),
                 base: p_cfg.base_address,
-                size: 0x1000, // Default 4KB page
+                size,
                 irq,
                 dev,
             });

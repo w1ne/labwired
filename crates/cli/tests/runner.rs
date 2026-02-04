@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn write_temp_file(prefix: &str, contents: &str) -> PathBuf {
@@ -55,7 +55,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -82,7 +82,7 @@ assertions:
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--script",
             script.to_str().unwrap(),
             "--no-uart-stdout",
@@ -140,7 +140,7 @@ assertions: []
         .args([
             "test",
             "--firmware",
-            "tests/dummy.elf",
+            "../../tests/dummy.elf",
             "--system",
             system_path.to_str().unwrap(),
             "--script",
@@ -152,3 +152,4 @@ assertions: []
 
     assert_eq!(output.status.code(), Some(3));
 }
+
