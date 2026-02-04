@@ -114,21 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI now supports `--system <path>` to load custom hardware configurations.
 - Peripheral interaction unified under the `Peripheral` trait.
 
-## [0.1.0] - 2026-02-02
-
-### Added
-- **Core**: Initial `Machine`, `Cpu`, `SystemBus` implementation.
-- **Loader**: ELF binary parsing support via `goblin`.
-- **Decoder**: Basic Thumb-2 decoder supporting `MOV`, `B`, and `NOP`.
-- **Memory**: Linear memory model with Flash (0x0) and RAM (0x2...) mapping.
-- **CLI**: `labwired-cli` runnable for loading and simulating firmware.
-- **Tests**: Dockerized test infrastructure and unit test suite.
-- **Docs**: Comprehensive Architecture and Implementation Plan.
-
-### Infrastructure
-- CI/CD pipelines via GitHub Actions.
-- Dockerfile for portable testing.
-
 ## [0.3.0] - 2026-02-02
 
 ### Added
@@ -164,3 +149,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `labwired-cli` now runs 20,000 steps by default to support firmware boot.
 - Updated `docs/architecture.md` and `README.md` with new capabilities.
+
+## [0.1.0] - 2026-02-02
+
+### Added
+- **Core**: Initial `Machine`, `Cpu`, `SystemBus` implementation.
+- **Loader**: ELF binary parsing support via `goblin`.
+- **Decoder**: Basic Thumb-2 decoder supporting `MOV`, `B`, and `NOP`.
+- **Memory**: Linear memory model with Flash (0x0) and RAM (0x2...) mapping.
+- **CLI**: `labwired-cli` runnable for loading and simulating firmware.
+- **Tests**: Dockerized test infrastructure and unit test suite.
+- **Docs**: Comprehensive Architecture and Implementation Plan.
+
+### Infrastructure
+- CI/CD pipelines via GitHub Actions.
+- Dockerfile for portable testing.
