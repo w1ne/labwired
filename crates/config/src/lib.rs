@@ -129,8 +129,8 @@ impl TestScript {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let f = std::fs::File::open(&path)
             .with_context(|| format!("Failed to open test script at {:?}", path.as_ref()))?;
-        let script: Self = serde_yaml::from_reader(f)
-            .context("Failed to parse Test Script YAML")?;
+        let script: Self =
+            serde_yaml::from_reader(f).context("Failed to parse Test Script YAML")?;
         script.validate()?;
         Ok(script)
     }

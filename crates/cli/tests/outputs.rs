@@ -40,7 +40,7 @@ assertions:
     std::fs::write(&script_path, script_content).expect("Failed to write script");
 
     let output_dir = dir.join("artifacts");
-    
+
     let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
         .args([
             "test",
@@ -70,7 +70,10 @@ assertions:
     assert_eq!(result["status"], "pass");
     assert_eq!(result["stop_reason"], "max_steps");
     assert!(result["firmware_hash"].as_str().is_some());
-    assert!(result["config"]["firmware"].as_str().unwrap().contains("dummy.elf"));
+    assert!(result["config"]["firmware"]
+        .as_str()
+        .unwrap()
+        .contains("dummy.elf"));
 
     // Clean up
     let _ = std::fs::remove_dir_all(&dir);
@@ -123,7 +126,8 @@ fn test_cli_test_mode_wall_time() {
     let fw_abs = std::fs::canonicalize("../../tests/dummy.elf").unwrap();
     let script = write_temp_file(
         "script-walltime",
-        &format!(r#"
+        &format!(
+            r#"
 schema_version: "1.0"
 inputs:
   firmware: "{}"
@@ -132,7 +136,9 @@ limits:
   wall_time_ms: 0
 assertions:
   - expected_stop_reason: wall_time
-"#, fw_abs.to_str().unwrap()),
+"#,
+            fw_abs.to_str().unwrap()
+        ),
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
@@ -154,7 +160,8 @@ fn test_cli_test_mode_memory_violation() {
     let fw_abs = std::fs::canonicalize("../../tests/dummy.elf").unwrap();
     let script = write_temp_file(
         "script-memviol",
-        &format!(r#"
+        &format!(
+            r#"
 schema_version: "1.0"
 inputs:
   firmware: "{}"
@@ -162,7 +169,9 @@ limits:
   max_steps: 1000
 assertions:
   - expected_stop_reason: memory_violation
-"#, fw_abs.to_str().unwrap()),
+"#,
+            fw_abs.to_str().unwrap()
+        ),
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
@@ -184,21 +193,20 @@ fn test_cli_test_mode_max_steps_guard() {
     let fw_abs = std::fs::canonicalize("../../tests/dummy.elf").unwrap();
     let script = write_temp_file(
         "script-huge",
-        &format!(r#"
+        &format!(
+            r#"
 schema_version: "1.0"
 inputs:
   firmware: "{}"
 limits:
   max_steps: 60000000
-"#, fw_abs.to_str().unwrap()),
+"#,
+            fw_abs.to_str().unwrap()
+        ),
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .args([
-            "test",
-            "--script",
-            script.to_str().unwrap(),
-        ])
+        .args(["test", "--script", script.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -212,7 +220,8 @@ fn test_cli_test_mode_regex_fail() {
     let fw_abs = std::fs::canonicalize("../../tests/dummy.elf").unwrap();
     let script = write_temp_file(
         "script-regex-fail",
-        &format!(r#"
+        &format!(
+            r#"
 schema_version: "1.0"
 inputs:
   firmware: "{}"
@@ -220,15 +229,13 @@ limits:
   max_steps: 10
 assertions:
   - uart_regex: "^ThisTextWillNeverBeFound$"
-"#, fw_abs.to_str().unwrap()),
+"#,
+            fw_abs.to_str().unwrap()
+        ),
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .args([
-            "test",
-            "--script",
-            script.to_str().unwrap(),
-        ])
+        .args(["test", "--script", script.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 

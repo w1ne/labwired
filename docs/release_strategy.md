@@ -16,7 +16,7 @@ We follow the **Gitflow** branching strategy to manage releases and features eff
 - **History**: Use "Squash and Merge" for feature branches to keep history clean. Use "Merge Commit" for releases to preserve the valid history.
 
 ## 2. Quality Gates
-Every PR and commit to `develop`/`main` must pass the following automated gates:
+Every PR and commit to `develop`/`main` must pass the following automated gates. **Developers MUST run these locally before opening a PR.**
 
 ### Automated Checks (CI)
 | Check | Command | Failure Condition |
@@ -66,8 +66,10 @@ Fixes: (Optional)
 1.  **Freeze**: Create a `release/vX.Y.Z` branch from `develop`.
 2.  **Bump**: Update version numbers in `Cargo.toml` (workspace and crates).
 3.  **Changelog**: Update `CHANGELOG.md` with features and fixes.
-4.  **Draft Release**: Create a GitHub Release draft using the **Verbatim** format above.
-5.  **Verify**: Run the full regression suite on the release branch.
+4.  **Verify**: Run the full regression suite and formatting check locally:
+    - `cargo test --workspace`
+    - `cargo fmt --all -- --check`
+5.  **Draft Release**: Create a GitHub Release draft using the **Verbatim** format above.
 6.  **Merge**:
     - Merge `release/vX.Y.Z` into `main`.
     - Tag `main` with `vX.Y.Z`.

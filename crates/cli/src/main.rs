@@ -175,7 +175,11 @@ fn run_interactive(cli: Cli) -> ExitCode {
             Ok(_) => {
                 // Periodically report IPS if not in trace mode
                 if !cli.trace && step > 0 && step % 10000 == 0 {
-                    info!("Progress: {} steps, current IPS: {:.2}", step, metrics.get_ips());
+                    info!(
+                        "Progress: {} steps, current IPS: {:.2}",
+                        step,
+                        metrics.get_ips()
+                    );
                 }
             }
             Err(e) => {

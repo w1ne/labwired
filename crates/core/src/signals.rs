@@ -79,7 +79,7 @@ mod tests {
         assert_eq!(sig.get(), DigitalLevel::Low);
         sig.set(DigitalLevel::High);
         assert_eq!(sig.get(), DigitalLevel::High);
-        
+
         let b: bool = sig.get().into();
         assert!(b);
     }

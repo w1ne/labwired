@@ -25,9 +25,8 @@ This document details our Git Flow branching strategy and the rules governing br
 2.  **Commit changes**: Follow [Conventional Commits](https://www.conventionalcommits.org/).
 3.  **Open a Pull Request**: Target the appropriate branch (`develop` or `main`).
 4.  **Wait for CI**: All automated tests, lints, and audits MUST pass.
-5.  **Review**: At least one peer review is required.
-6.  **Resolve Conversations**: All comments must be addressed or resolved.
-7.  **Merge**:
+5.  **Resolve Conversations**: All comments must be addressed or resolved.
+6.  **Merge**:
     - `feature/*` -> `develop`: Squash and Merge.
     - `release/*` -> `main`: Merge Commit (to preserve versioning history).
     - `hotfix/*` -> `main`: Merge Commit.
@@ -36,10 +35,8 @@ This document details our Git Flow branching strategy and the rules governing br
 
 The `main` and `develop` branches are protected with the following rules:
 
-- **Require a pull request before merging**: No direct pushes allowed.
 - **Require status checks to pass**: The CI `build` job (including tests, lints, and audits) must succeed.
 - **Require conversation resolution**: All discussions must be closed.
-- **Enforce for administrators**: Rules apply to everyone.
 
 ## 4. Feature Implementation Rule
 New functionality can ONLY be merged after a Pull Request is approved and all CI tests are confirmed green.

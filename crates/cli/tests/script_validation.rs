@@ -144,4 +144,3 @@ assertions: []
 
     assert_eq!(output.status.code(), Some(1));
 }
-

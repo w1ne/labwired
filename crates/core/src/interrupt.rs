@@ -8,13 +8,13 @@ use std::fmt::Debug;
 pub trait InterruptController: Debug + Send + Sync {
     /// Signal the controller that an interrupt line has changed.
     fn set_interrupt_pending(&self, irq: u32, pending: bool);
-    
+
     /// Check if a specific interrupt is enabled and pending.
     fn is_interrupt_active(&self, irq: u32) -> bool;
-    
+
     /// Acknowledge an interrupt, usually called by the CPU at the start of an ISR.
     fn acknowledge_interrupt(&self) -> Option<u32>;
-    
+
     /// Complete an interrupt, usually called by the CPU after an ISR finishes.
     fn complete_interrupt(&self, irq: u32);
 }
@@ -30,6 +30,7 @@ impl<'a> InterruptBridge<'a> {
     }
 
     pub fn update(&self, irq: u32, line: &InterruptLine) {
-        self.controller.set_interrupt_pending(irq, line.is_pending());
+        self.controller
+            .set_interrupt_pending(irq, line.is_pending());
     }
 }
