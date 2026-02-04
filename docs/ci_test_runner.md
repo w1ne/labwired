@@ -57,6 +57,7 @@ Notes:
   - `--max-cycles` overrides `limits.max_cycles`
   - `--max-uart-bytes` overrides `limits.max_uart_bytes`
   - `--detect-stuck` (alias: `--no-progress`) overrides `limits.no_progress_steps`
+- `--breakpoint <addr>` (repeatable) stops the run when PC matches and sets `stop_reason: halt`.
 
 ### Deprecated Legacy Schema (v1)
 
