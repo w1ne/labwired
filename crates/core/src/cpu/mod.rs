@@ -181,7 +181,11 @@ impl Cpu for CortexM {
         self.vtor = vtor;
     }
 
-    fn step(&mut self, bus: &mut dyn Bus, observers: &[Arc<dyn SimulationObserver>]) -> SimResult<()> {
+    fn step(
+        &mut self,
+        bus: &mut dyn Bus,
+        observers: &[Arc<dyn SimulationObserver>],
+    ) -> SimResult<()> {
         // Check for pending exceptions before executing instruction
         if self.pending_exceptions != 0 {
             // Find highest priority exception (Simplified: highest bit)
@@ -390,6 +394,27 @@ impl Cpu for CortexM {
                 }) as u32;
                 self.write_reg(rd, res);
                 self.update_nz(res);
+                self.write_reg(rd, res);
+                self.update_nz(res);
+            }
+            Instruction::AsrReg { rd, rm } => {
+                let val = self.read_reg(rd) as i32;
+                let shift = self.read_reg(rm) & 0xFF;
+                let res = if shift == 0 {
+                    val as u32
+                } else if shift >= 32 {
+                    (val >> 31) as u32
+                } else {
+                    (val >> shift) as u32
+                };
+                self.write_reg(rd, res);
+                self.update_nz(res);
+            }
+            Instruction::Rsbs { rd, rn } => {
+                let op1 = self.read_reg(rn);
+                let (res, c, v) = sub_with_flags(0, op1);
+                self.write_reg(rd, res);
+                self.update_nzcv(res, c, v);
             }
 
             // Memory Operations (Word)
@@ -408,6 +433,14 @@ impl Cpu for CortexM {
                 let val = self.read_reg(rt);
                 if bus.write_u32(addr as u64, val).is_err() {
                     tracing::error!("Bus Write Fault at {:#x}", addr);
+                }
+            }
+            Instruction::LdrReg { rt, rn, rm } => {
+                let addr = self.read_reg(rn).wrapping_add(self.read_reg(rm));
+                if let Ok(val) = bus.read_u32(addr as u64) {
+                    self.write_reg(rt, val);
+                } else {
+                    tracing::error!("Bus Read Fault (LDR reg) at {:#x}", addr);
                 }
             }
 
@@ -436,6 +469,19 @@ impl Cpu for CortexM {
                 if bus.write_u32(addr as u64, val).is_err() {
                     tracing::error!("Bus Write Fault (StrSp) at {:#x}", addr);
                 }
+            }
+            Instruction::AddSpReg { rd, imm } => {
+                let res = self.sp.wrapping_add(imm as u32);
+                self.write_reg(rd, res);
+            }
+            Instruction::Adr { rd, imm } => {
+                let pc_val = (self.pc & !3) + 4;
+                let res = pc_val.wrapping_add(imm as u32);
+                self.write_reg(rd, res);
+            }
+            Instruction::Uxtb { rd, rm } => {
+                let val = self.read_reg(rm) & 0xFF;
+                self.write_reg(rd, val);
             }
 
             // Memory Operations (Byte)

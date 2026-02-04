@@ -1,4 +1,4 @@
-use crate::{Cpu, Bus, bus::SystemBus, SimulationObserver};
+use crate::{bus::SystemBus, Bus, Cpu, SimulationObserver};
 use std::sync::Arc;
 
 /// A machine that supports multiple CPU cores.
@@ -31,11 +31,11 @@ impl MultiCoreMachine {
         for core in &mut self.cores {
             results.push(core.step(&mut self.bus, &self.observers));
         }
-        
+
         // Tick peripherals once after all cores have stepped
         let _interrupts = self.bus.tick_peripherals();
         // TODO: Map interrupts to specific cores based on system wiring
-        
+
         results
     }
 }

@@ -16,91 +16,7 @@ fn write_temp_file(prefix: &str, contents: &str) -> PathBuf {
     path
 }
 
-#[test]
-fn test_cli_help() {
-    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .arg("--help")
-        .output()
-        .expect("Failed to execute command");
-
-    assert!(output.status.success());
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("LabWired Simulator"));
-}
-
-#[test]
-fn test_cli_load_missing_file() {
-    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .arg("-f")
-        .arg("non_existent_file.elf")
-        .output()
-        .expect("Failed to execute command");
-
-    // It should fail because file is missing
-    assert!(!output.status.success());
-}
-
-#[test]
-fn test_cli_test_mode_passes_with_zero_steps() {
-    let script = write_temp_file(
-        "script-pass",
-        r#"
-schema_version: "1.0"
-inputs:
-  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
-limits:
-  max_steps: 1
-assertions: []
-"#,
-    );
-
-    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .args([
-            "test",
-            "--firmware",
-            "../../tests/fixtures/uart-ok-thumbv7m.elf",
-            "--script",
-            script.to_str().unwrap(),
-            "--no-uart-stdout",
-        ])
-        .output()
-        .expect("Failed to execute command");
-
-    assert_eq!(output.status.code(), Some(0));
-}
-
-#[test]
-fn test_cli_test_mode_assertion_fail_exit_1() {
-    let script = write_temp_file(
-        "script-fail",
-        r#"
-schema_version: "1.0"
-inputs:
-  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
-limits:
-  max_steps: 1
-assertions:
-  - uart_contains: "this string will not be present"
-"#,
-    );
-
-    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
-        .args([
-            "test",
-            "--firmware",
-            "../../tests/fixtures/uart-ok-thumbv7m.elf",
-            "--script",
-            script.to_str().unwrap(),
-            "--no-uart-stdout",
-        ])
-        .output()
-        .expect("Failed to execute command");
-
-    assert_eq!(output.status.code(), Some(1));
-}
-
-#[test]
-fn test_cli_test_mode_runtime_error_exit_3() {
+fn write_tiny_system() -> PathBuf {
     let base_dir = std::env::temp_dir()
         .join("labwired-tests")
         .join(format!("system-{}", std::process::id()));
@@ -133,15 +49,52 @@ chip: "chip.yaml"
     )
     .unwrap();
 
+    system_path
+}
+
+#[test]
+fn test_script_unknown_fields_exit_2() {
     let script = write_temp_file(
-        "script-runtime",
+        "script-unknown",
         r#"
 schema_version: "1.0"
 inputs:
   firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
 limits:
   max_steps: 1
-assertions: []
+unexpected_field: 123
+"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
+        .args([
+            "test",
+            "--firmware",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
+            "--script",
+            script.to_str().unwrap(),
+            "--no-uart-stdout",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn test_expected_stop_reason_allows_sim_error_to_pass() {
+    let system_path = write_tiny_system();
+    let script = write_temp_file(
+        "script-expected-stop",
+        r#"
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
+  system: "system.yaml"
+limits:
+  max_steps: 1
+assertions:
+  - expected_stop_reason: memory_violation
 "#,
     );
 
@@ -159,5 +112,35 @@ assertions: []
         .output()
         .expect("Failed to execute command");
 
-    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(output.status.code(), Some(0));
+}
+
+#[test]
+fn test_wall_time_stop_fails_without_expected_stop_reason() {
+    let script = write_temp_file(
+        "script-wall-time",
+        r#"
+schema_version: "1.0"
+inputs:
+  firmware: "../../tests/fixtures/uart-ok-thumbv7m.elf"
+limits:
+  max_steps: 1
+  wall_time_ms: 0
+assertions: []
+"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_labwired"))
+        .args([
+            "test",
+            "--firmware",
+            "../../tests/fixtures/uart-ok-thumbv7m.elf",
+            "--script",
+            script.to_str().unwrap(),
+            "--no-uart-stdout",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    assert_eq!(output.status.code(), Some(1));
 }

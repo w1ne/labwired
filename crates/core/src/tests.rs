@@ -323,8 +323,14 @@ mod tests {
         let chip = ChipDescriptor {
             name: "test-chip-2".to_string(),
             arch: "cortex-m3".to_string(),
-            flash: MemoryRange { base: 0x0, size: "128KB".to_string() },
-            ram: MemoryRange { base: 0x2000_0000, size: "20KB".to_string() },
+            flash: MemoryRange {
+                base: 0x0,
+                size: "128KB".to_string(),
+            },
+            ram: MemoryRange {
+                base: 0x2000_0000,
+                size: "20KB".to_string(),
+            },
             peripherals: vec![
                 PeripheralConfig {
                     id: "systick".to_string(),
@@ -355,7 +361,11 @@ mod tests {
         let bus = crate::bus::SystemBus::from_config(&chip, &manifest).unwrap();
         assert_eq!(bus.peripherals.len(), 2);
 
-        let systick = bus.peripherals.iter().find(|p| p.name == "systick").unwrap();
+        let systick = bus
+            .peripherals
+            .iter()
+            .find(|p| p.name == "systick")
+            .unwrap();
         assert_eq!(systick.base, 0xE000_E010);
         assert_eq!(systick.size, 0x1000);
         assert_eq!(systick.irq, Some(15));

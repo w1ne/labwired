@@ -1,12 +1,12 @@
 pub mod bus;
 pub mod cpu;
 pub mod decoder;
-pub mod memory;
-pub mod peripherals;
-pub mod metrics;
-pub mod signals;
 pub mod interrupt;
+pub mod memory;
+pub mod metrics;
 pub mod multi_core;
+pub mod peripherals;
+pub mod signals;
 
 use std::any::Any;
 use std::sync::atomic::AtomicU32;
@@ -35,7 +35,11 @@ pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
 /// Trait representing a CPU architecture
 pub trait Cpu {
     fn reset(&mut self);
-    fn step(&mut self, bus: &mut dyn Bus, observers: &[Arc<dyn SimulationObserver>]) -> SimResult<()>;
+    fn step(
+        &mut self,
+        bus: &mut dyn Bus,
+        observers: &[Arc<dyn SimulationObserver>],
+    ) -> SimResult<()>;
     fn set_pc(&mut self, val: u32);
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
@@ -162,7 +166,11 @@ impl<C: Cpu + Default> Machine<C> {
             });
         }
 
-        Self { cpu, bus, observers: Vec::new() }
+        Self {
+            cpu,
+            bus,
+            observers: Vec::new(),
+        }
     }
 }
 
