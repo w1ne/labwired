@@ -15,9 +15,17 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7m-none-eabi
 
-      - name: Build Release
-        run: cargo build --release --verbose
+      - name: Run Tests
+        run: cargo test --workspace --release --verbose
+
+      - name: Build (Host)
+        run: cargo build --workspace --exclude firmware --exclude firmware-ci-fixture --release --verbose
+
+      - name: Build (Firmware)
+        run: cargo build -p firmware --target thumbv7m-none-eabi --release --verbose
 
       - name: Create Archive
         run: |

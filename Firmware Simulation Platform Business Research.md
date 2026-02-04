@@ -339,6 +339,52 @@ Manually coding peripheral models is slow. The platform addresses this with a Ge
 
 The implementation is structured into five shippable iterations, each adding tangible value.
 
+### **Roadmap Overview (High-Level)**
+
+| Iteration | Primary outcome | Main artifact | Target user | Exit criteria (summary) |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | Run real firmware locally with a single command (logs + basic timing). | Standalone CLI runner | Individual engineers | Boots a reference firmware; stable UART; deterministic step/run; documented install. |
+| **2** | Turn simulation into a CI primitive (repeatable pass/fail). | CI runner + Docker + GitHub Action | Teams | Scriptable assertions; machine-readable reports; container image; sample workflows. |
+| **3** | Make simulation feel like real hardware debugging in an IDE. | DAP server + VS Code extension | Firmware engineers | Breakpoints/step/inspect; symbols; stable debug sessions; docs + examples. |
+| **4** | Break the peripheral modeling bottleneck with an automated asset pipeline. | Model Generator portal + model registry | Power users + partners | SVD/PDF ingestion; validated model output; versioned registry; safety gates. |
+| **5** | Commercial-scale parallel execution with compliance reporting. | Fleet orchestrator + dashboard + reporting | Enterprise QA/Safety | Multi-tenant fleet; fault injection + coverage reports; SSO/RBAC; auditable artifacts. |
+
+### **Cross-Cutting Workstreams (All Iterations)**
+
+These are *always-on* workstreams that keep the platform shippable while complexity increases.
+
+**Release Engineering & Quality**
+- [ ] Enforce quality gates in CI: `cargo fmt`, `cargo clippy -D warnings`, `cargo test`, `cargo audit`, `cargo build` (see `docs/release_strategy.md`).  
+- [ ] Define a release checklist per iteration: version bump, changelog entry, artifacts, docs update, demo verification.
+- [ ] Maintain a compatibility matrix (supported MCUs / boards / peripherals / known gaps).
+
+**Determinism & Correctness**
+- [ ] Add deterministic execution controls: fixed tick rate, reproducible scheduling, bounded randomness.
+- [ ] Maintain a “golden reference” suite: periodic cross-checks against physical boards for key behaviors.
+- [ ] Introduce regression fixtures per peripheral (read/write behavior, interrupts, reset behavior).
+
+**Security & Isolation (especially cloud-facing)**
+- [ ] Treat firmware as untrusted input: strict resource limits (CPU time, memory), crash containment, and safe defaults.
+- [ ] Produce a threat model and basic mitigations before any multi-tenant cloud execution (Iteration 5).
+
+**Observability**
+- [ ] Provide structured logs + traces (UART, interrupts, bus transactions) that can be exported and attached to bugs.
+- [ ] Define a stable “artifact set” for runs (logs, traces, config, firmware hash) to make runs reproducible.
+
+**Market Validation & Adoption**
+- [ ] Define the initial ICP (ideal customer profile) and wedge use case (e.g., “run STM32 HAL firmware in CI without dev kits”).
+  - [ ] Collect 15–30 discovery interviews and convert findings into 3–5 concrete “jobs to be done”.
+  - [ ] Create a public demo + tutorial for the wedge use case (product-led growth).
+- [ ] Decide the open-core boundary (what is open source vs proprietary) and document the rationale.
+- [ ] Establish a contribution model for peripherals/models (review process, versioning, compatibility policy).
+
+**Economics & Compliance**
+- [ ] Define pricing metrics early (seats vs minutes vs storage) and instrument the platform to measure COGS per run.
+- [ ] Start an “enterprise readiness” checklist ahead of Iteration 5:
+  - [ ] Audit logs, RBAC, and retention policies.
+  - [ ] SOC2 readiness plan (policies + evidence collection).
+  - [ ] ISO 26262 documentation plan (tool qualification evidence pack scope).
+
 ### **Iteration 1: The Standalone CLI (MVP)**
 
 **Objective:** A shippable, command-line tool that can execute a compiled binary for a specific architecture (e.g., Cortex-M4) and output serial logs.
@@ -350,7 +396,51 @@ The implementation is structured into five shippable iterations, each adding tan
 * **Basic Peripherals:** UART (for printf), SysTick (for RTOS scheduling), and NVIC (Interrupt Controller).  
 * **Output:** stdout passthrough.
 
-**Shippable Artifact:** A downloadable binary (sim-cli). Users can run ./sim-cli firmware.elf and see their firmware bootlogs in the terminal.
+**Milestones & Task Breakdown**
+
+**A. Product shape (high-level)**
+- [ ] Define the MVP “reference target” (one MCU + one board profile) and publish it as the official demo.
+- [ ] Define a minimal **system description format** (YAML/JSON) for: memory map, clock/tick, peripheral address ranges.
+- [ ] Define CLI UX: `run`, `run --max-cycles`, `run --timeout`, `run --log-format`, `trace` (optional), `info`.
+
+**B. Loader & memory model**
+- [ ] Load ELF segments into Flash/RAM regions.
+  - [ ] Validate address ranges against the system description.
+  - [ ] Provide clear errors for overlapping/out-of-bounds segments.
+- [ ] Implement reset/boot sequence:
+  - [ ] Read initial SP/PC from vector table.
+  - [ ] Support VTOR relocation if the firmware uses it (or document as a limitation).
+
+**C. Execution engine (bring-up)**
+- [ ] Implement a deterministic simulation loop:
+  - [ ] Step mode (single instruction).
+  - [ ] Run mode (until condition/timeout).
+  - [ ] Stable time base (cycle counter or tick counter).
+- [ ] Implement the minimum Thumb/Thumb-2 coverage required to boot a typical firmware runtime (startup + main loop).
+- [ ] Implement exceptions needed for basic firmware:
+  - [ ] SysTick exception entry/exit.
+  - [ ] NVIC interrupt enabling + pending + dispatch for at least one external IRQ.
+
+**D. Peripherals (MVP)**
+- [ ] UART model sufficient for printf-style output:
+  - [ ] TX register write → stdout.
+  - [ ] Optional: RX injection via stdin/file to unblock interactive demos.
+- [ ] SysTick model:
+  - [ ] `CTRL/LOAD/VAL` behavior + periodic interrupt.
+- [ ] NVIC model:
+  - [ ] ISER/ICER/ISPR/ICPR minimal register set.
+
+**E. Validation, docs, and packaging**
+- [ ] Ship at least one “known-good” firmware fixture with expected UART output.
+- [ ] Add integration tests that run the fixture and assert UART output.
+- [ ] Publish quickstart docs: install, run, supported constraints, troubleshooting.
+
+**F. Adoption (PLG wedge)**
+- [ ] Publish a “Hello, firmware simulation” guide with a copy-paste command sequence.
+- [ ] Add 2–3 reference examples (GPIO blink, UART logging, SysTick-based delay) and document expected output.
+- [ ] Add a feedback loop: issue templates for unsupported instructions/peripherals, and a “request a chip” template.
+
+**Shippable Artifact:** A downloadable binary (sim-cli / standalone runner). Users can run `./sim-cli firmware.elf` and see their firmware bootlogs in the terminal.
 
 **Differentiation:** Faster startup and lower memory footprint than QEMU; easier to install (single binary, no dependencies).
 
@@ -363,6 +453,43 @@ The implementation is structured into five shippable iterations, each adding tan
 * **Scripting:** Add support for a "test script" file (YAML or Python) that defines exit conditions (e.g., "Success if UART output contains 'Tests Passed'", "Fail if timeout \> 10s").19  
 * **Headless Mode:** Optimization for non-interactive execution (suppress TUI/GUI updates).  
 * **Docker Container:** Publish a lightweight Docker image containing the CLI.
+
+**Milestones & Task Breakdown**
+
+**A. Test definition format (high-level)**
+- [ ] Define a stable “simulation test” schema (YAML recommended):
+  - [ ] Inputs: firmware path, system config, optional files (e.g., flash images).
+  - [ ] Limits: max cycles, wall-clock timeout, max UART bytes.
+  - [ ] Assertions: UART contains/regex, exit code, memory/register checks, “no hardfault”.
+  - [ ] Optional actions: inject UART RX, toggle GPIO, trigger IRQ at time T.
+- [ ] Implement schema validation with actionable errors.
+
+**B. Headless runner behavior**
+- [ ] Implement deterministic exit conditions (assertions + timeouts).
+- [ ] Emit machine-readable output:
+  - [ ] JSON summary (pass/fail, duration, cycles).
+  - [ ] JUnit XML (optional) for CI test reporting.
+- [ ] Standardize exit codes (`0` pass, non-zero fail, `2` infra/config error).
+
+**C. Container + CI integration**
+- [ ] Publish a minimal Docker image:
+  - [ ] Multi-arch build plan (x86_64 + ARM64) where feasible.
+  - [ ] Non-root runtime.
+- [ ] Ship a GitHub Action wrapper:
+  - [ ] Inputs: firmware, system, script.
+  - [ ] Outputs: artifact paths, summary.
+- [ ] Provide ready-to-copy CI examples (GitHub Actions + GitLab CI).
+
+**D. Developer experience**
+- [ ] Add a “CI template repository” or example folder with:
+  - [ ] One passing test and one failing test demo.
+  - [ ] Documentation on how to author scripts.
+
+**E. Adoption (CI as the wedge)**
+- [ ] Publish “hardware-in-the-loop replacement” reference workflows:
+  - [ ] GitHub Actions template with cached toolchains.
+  - [ ] GitLab CI template with artifact upload.
+- [ ] Create a small catalog of CI-ready firmware examples that teams can fork.
 
 **Shippable Artifact:** An official **GitHub Action** (uses: platform/sim-action).
 
@@ -378,6 +505,46 @@ The implementation is structured into five shippable iterations, each adding tan
 * **Features:** Breakpoints, Stack Trace, Variable Inspection, Memory View.  
 * **VS Code Extension:** A minimal wrapper to auto-launch the sim-runner and connect the debugger.
 
+**Milestones & Task Breakdown**
+
+**A. Debugger architecture (high-level)**
+- [ ] Decide the debugging contract:
+  - [ ] Instruction-level stepping as the baseline.
+  - [ ] Optional source-level stepping when DWARF is available.
+- [ ] Define the simulator control API used by DAP (start/pause/step/read regs/read mem).
+
+**B. DAP server (core)**
+- [ ] Implement required DAP requests:
+  - [ ] `initialize`, `launch/attach`, `setBreakpoints`, `configurationDone`.
+  - [ ] `continue`, `next/stepIn/stepOut`, `pause`.
+  - [ ] `stackTrace`, `scopes`, `variables`.
+  - [ ] `readMemory` (and optionally `writeMemory` behind a flag).
+- [ ] Breakpoint engine:
+  - [ ] PC breakpoints.
+  - [ ] (Optional) data watchpoints later.
+
+**C. Symbolization & source mapping**
+- [ ] Parse ELF symbols:
+  - [ ] Map PC → function name.
+  - [ ] Provide disassembly view when sources are missing.
+- [ ] If debug info exists, map PC → file:line for improved UX.
+
+**D. VS Code extension**
+- [ ] Provide a minimal extension that:
+  - [ ] Starts the runner with correct flags.
+  - [ ] Connects VS Code’s debugger to the DAP server.
+  - [ ] Supplies launch configuration templates (`launch.json`).
+- [ ] Ship a demo project that users can debug in under 5 minutes.
+
+**E. Validation**
+- [ ] Add “debug smoke tests”:
+  - [ ] Assert breakpoints hit deterministically.
+  - [ ] Assert register/memory reads match expected state at breakpoint.
+
+**F. Adoption (developer workflow)**
+- [ ] Publish a “Debug without hardware” tutorial (VS Code) and a 3-minute screencast-style walkthrough outline.
+- [ ] Provide a ready-to-run debug demo project with breakpoints in startup, IRQ handler, and peripheral init.
+
 **Shippable Artifact:** A **VS Code Extension** in the Marketplace.
 
 **Value:** Replaces physical JTAG/SWD probes. Developers can debug "hardware" bugs (e.g., register misconfiguration) purely in software.
@@ -392,6 +559,48 @@ The implementation is structured into five shippable iterations, each adding tan
 * **RAG Agent:** AI agent to extract behavioral logic (e.g., "write 1 to bit 3 clears the interrupt") and generate Rust trait implementations.20  
 * **SystemRDL Compiler:** Validate generated models against standard constraints.
 
+**Milestones & Task Breakdown**
+
+**A. Model IR (high-level)**
+- [ ] Define a strict intermediate representation (IR) for peripherals:
+  - [ ] Registers, fields, reset values, access types, side effects.
+  - [ ] Interrupt lines and trigger conditions.
+  - [ ] Timing hooks (what changes per tick).
+- [ ] Define a compatibility policy: what subset of behavior is “required” vs “best-effort”.
+
+**B. Ingestion**
+- [ ] SVD ingestion:
+  - [ ] Parse SVD into IR.
+  - [ ] Validate field widths, overlaps, reset values.
+- [ ] Datasheet/PDF ingestion:
+  - [ ] Extract text + tables reliably.
+  - [ ] Chunk + index into a searchable store for retrieval.
+
+**C. AI synthesis (RAG)**
+- [ ] Build a retrieval pipeline to answer questions like:
+  - [ ] “What happens when bit X is written as 1?”
+  - [ ] “Which events set the IRQ flag?”
+- [ ] Define prompting templates that output structured deltas to the IR (not raw code).
+- [ ] Add evaluation harness (golden peripherals) and measure accuracy before shipping broadly.
+
+**D. Verification and generation**
+- [ ] Generate SystemRDL from IR and validate it.
+- [ ] Generate Rust peripheral code from IR/SystemRDL:
+  - [ ] Deterministic codegen (same inputs → same output).
+  - [ ] Compile-time checks + unit tests for register behavior.
+- [ ] Gate publishing on verification:
+  - [ ] Static checks (schema + RDL validation).
+  - [ ] Simulation tests (known register semantics).
+
+**E. Asset registry and distribution**
+- [ ] Version and sign models (hash inputs + artifact, store provenance).
+- [ ] Implement upgrade/compat rules (breaking vs non-breaking changes).
+- [ ] Provide a “model submission” workflow for community and vendor partners.
+
+**F. Adoption (ecosystem growth)**
+- [ ] Create a public “model library” index page (even if initially small) and define quality tiers (community vs verified).
+- [ ] Define a partner workflow for chip vendors (NDA path, pre-release models, verification checklist).
+
 **Shippable Artifact:** A "Model Generator" web portal. Users upload a datasheet and get a compiled Rust plugin for the simulator.
 
 ### **Iteration 5: Enterprise Fleet Management**
@@ -400,9 +609,58 @@ The implementation is structured into five shippable iterations, each adding tan
 
 **Technical Scope:**
 
-5. **Cloud Orchestrator:** Kubernetes-based manager to spawn thousands of sim-runner instances on AWS Graviton.15  
-6. **Fleet Dashboard:** Web UI to view the status of 10,000 parallel tests.  
-7. **Coverage Reports:** Aggregated code coverage and fault injection reports (ISO 26262 evidence).21
+* **Cloud Orchestrator:** Kubernetes-based manager to spawn thousands of runner instances on AWS Graviton.15  
+* **Fleet Dashboard:** Web UI to view the status of 10,000 parallel tests.  
+* **Coverage & Compliance:** Aggregated code coverage and fault injection reports (ISO 26262 evidence).21
+
+**Milestones & Task Breakdown**
+
+**A. Multi-tenant execution platform (high-level)**
+- [ ] Define tenancy model (org → projects → runs) and RBAC.
+- [ ] Define run lifecycle API:
+  - [ ] submit job → schedule → execute → collect artifacts → report.
+- [ ] Implement metering: simulation minutes, storage, concurrency.
+
+**B. Orchestration & isolation**
+- [ ] Containerize the runner for cloud execution.
+- [ ] Implement a scheduler:
+  - [ ] Queue + priorities + concurrency limits.
+  - [ ] Automatic retries for infra failures.
+- [ ] Enforce strict isolation:
+  - [ ] Resource limits (CPU/RAM).
+  - [ ] No outbound network by default for workloads.
+  - [ ] Artifact-only ingress/egress.
+- [ ] (Optional) Firecracker MicroVM isolation for higher assurance workloads.
+
+**C. Artifact store and observability**
+- [ ] Store per-run artifacts:
+  - [ ] Logs, traces, configs, firmware hash, results summary.
+- [ ] Provide retention policies and export/download.
+- [ ] Add fleet-level monitoring (SLOs, alerting, cost).
+
+**D. Fleet dashboard**
+- [ ] Authentication and enterprise features:
+  - [ ] SSO (SAML/OIDC), SCIM provisioning (optional).
+  - [ ] Audit logs.
+- [ ] Core UX:
+  - [ ] Run list with filters (branch, commit, status).
+  - [ ] Artifact viewer (UART logs, traces).
+  - [ ] Linkable run “snapshots” for collaboration.
+
+**E. Compliance & reporting**
+- [ ] Implement fault injection framework:
+  - [ ] Deterministic fault scenarios (sensor disconnect, voltage drop, memory faults).
+  - [ ] Batch execution across scenario matrix.
+- [ ] Integrate coverage reporting and aggregate results per build.
+- [ ] Generate ISO 26262-oriented evidence packs:
+  - [ ] Traceability to inputs (firmware hash, model versions, test scripts).
+  - [ ] Reproducibility instructions.
+  - [ ] Tool Qualification Kit outline and required documentation set.
+
+**F. Enterprise rollout**
+- [ ] Run 1–3 design partner pilots (automotive/industrial) with explicit success criteria and a documented ROI model.
+- [ ] Define support model (SLA tiers, incident response, private support channels).
+- [ ] Validate cloud unit economics in production-like load tests (cost per simulated minute at target concurrency).
 
 **Shippable Artifact:** The Enterprise SaaS Platform.
 
@@ -457,4 +715,3 @@ By focusing on a **standalone, high-performance Rust execution engine**, this pl
 * Wokwi CLI Usage, accessed February 2, 2026, [https://docs.wokwi.com/wokwi-ci/cli-usage](https://docs.wokwi.com/wokwi-ci/cli-usage)  
 * Securing LLM-Generated Embedded Firmware through AI Agent-Driven Validation and Patching \- arXiv, accessed January 31, 2026, [https://arxiv.org/html/2509.09970v1](https://arxiv.org/html/2509.09970v1)  
 * How to Use Simulink for ISO 26262 Projects \- MathWorks, accessed January 31, 2026, [https://www.mathworks.com/company/technical-articles/how-to-use-simulink-for-iso-26262-projects.html](https://www.mathworks.com/company/technical-articles/how-to-use-simulink-for-iso-26262-projects.html)
-

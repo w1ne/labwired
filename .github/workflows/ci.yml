@@ -3,6 +3,7 @@ name: LabWired CI
 on:
   push:
     branches: [ "main", "develop" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "main", "develop" ]
 
@@ -19,27 +20,68 @@ jobs:
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
       with:
+        targets: thumbv7m-none-eabi, thumbv6m-none-eabi
         components: clippy, rustfmt
 
     - name: Check Formatting
       run: cargo fmt --all -- --check
 
-    - name: Clippy Linting
-      run: cargo clippy --workspace -- -D warnings
+    - name: Clippy (Host)
+      run: cargo clippy --workspace --exclude firmware --exclude firmware-ci-fixture -- -D warnings
+
+    - name: Clippy (Firmware)
+      run: cargo clippy -p firmware --target thumbv7m-none-eabi -- -D warnings
+
+    - name: Clippy (CI Fixture)
+      run: cargo clippy -p firmware-ci-fixture --target thumbv6m-none-eabi -- -D warnings
 
     - name: Security Audit
       run: |
         cargo install cargo-audit
         cargo audit
 
-    - name: Build
-      run: cargo build --verbose
+    - name: Build (Host)
+      run: cargo build --workspace --exclude firmware --exclude firmware-ci-fixture --verbose
+
+    - name: Build (Firmware)
+      run: cargo build -p firmware --target thumbv7m-none-eabi --verbose
 
     - name: Run Tests
-      run: cargo test --verbose
+      run: cargo test --workspace --verbose
 
     - name: Test Coverage
       run: |
         cargo install cargo-tarpaulin
         cargo tarpaulin --out Xml
 
+  ci-test-runner:
+    name: CI Test Runner (labwired test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run labwired test
+        id: labwired
+        uses: ./.github/actions/labwired-test
+        with:
+          script: examples/ci/uart-ok.yaml
+          output_dir: out/artifacts
+          profile: release
+          no_uart_stdout: true
+
+      - name: Upload labwired artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: labwired-artifacts
+          path: out/artifacts
+          if-no-files-found: warn
+
+      - name: Fail job if labwired test failed
+        if: ${{ steps.labwired.outputs.exit_code != '0' }}
+        run: |
+          echo "labwired test failed with exit_code=${{ steps.labwired.outputs.exit_code }}"
+          exit ${{ steps.labwired.outputs.exit_code }}

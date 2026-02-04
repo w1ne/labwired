@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-04
+
+### Added
+- **Testing Infrastructure**: 
+    - **Test Script Schema (YAML)**: Versioned schema for defining firmware tests with inputs (ELF/System), limits (steps/time), and assertions (UART contents, stop reasons).
+    - **CI Regression Gates**: Enforced workspace-wide testing and linting in GitHub Actions.
+    - **Pre-Release Verification**: Automated regression suite execution on release tags and PRs.
+- **CI Automation**:
+    - Composite GitHub Action wrapper: `.github/actions/labwired-test`.
+    - CI-ready example scripts under `examples/ci/`.
+- **Documentation**: 
+    - Updated `README.md` to reflect real-world division firmware behavior and IPS reporting.
+    - Updated `plan.md` Iteration 10 with implementation details for modular observability.
+
+### Fixed
+- **CI Artifacts**: `labwired test --output-dir ...` now emits real `result.json` + `junit.xml` even on config/script errors (exit code `2`), with `status=error`, `stop_reason=config_error`, and a `message` field.
+
+### Changed
+- **CI Runner Artifacts**:
+    - `result.json`: added `result_schema_version`, `limits`, and `stop_reason_details`.
+    - `junit.xml`: emits one testcase per assertion to improve CI failure visibility.
+
 ## [0.8.0] - 2026-02-03
 
 ### Added
@@ -103,21 +125,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI now supports `--system <path>` to load custom hardware configurations.
 - Peripheral interaction unified under the `Peripheral` trait.
 
-## [0.1.0] - 2026-02-02
-
-### Added
-- **Core**: Initial `Machine`, `Cpu`, `SystemBus` implementation.
-- **Loader**: ELF binary parsing support via `goblin`.
-- **Decoder**: Basic Thumb-2 decoder supporting `MOV`, `B`, and `NOP`.
-- **Memory**: Linear memory model with Flash (0x0) and RAM (0x2...) mapping.
-- **CLI**: `labwired-cli` runnable for loading and simulating firmware.
-- **Tests**: Dockerized test infrastructure and unit test suite.
-- **Docs**: Comprehensive Architecture and Implementation Plan.
-
-### Infrastructure
-- CI/CD pipelines via GitHub Actions.
-- Dockerfile for portable testing.
-
 ## [0.3.0] - 2026-02-02
 
 ### Added
@@ -153,3 +160,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `labwired-cli` now runs 20,000 steps by default to support firmware boot.
 - Updated `docs/architecture.md` and `README.md` with new capabilities.
+
+## [0.1.0] - 2026-02-02
+
+### Added
+- **Core**: Initial `Machine`, `Cpu`, `SystemBus` implementation.
+- **Loader**: ELF binary parsing support via `goblin`.
+- **Decoder**: Basic Thumb-2 decoder supporting `MOV`, `B`, and `NOP`.
+- **Memory**: Linear memory model with Flash (0x0) and RAM (0x2...) mapping.
+- **CLI**: `labwired-cli` runnable for loading and simulating firmware.
+- **Tests**: Dockerized test infrastructure and unit test suite.
+- **Docs**: Comprehensive Architecture and Implementation Plan.
+
+### Infrastructure
+- CI/CD pipelines via GitHub Actions.
+- Dockerfile for portable testing.

@@ -270,12 +270,16 @@ mod tests {
                     id: "uart1".to_string(),
                     r#type: "uart".to_string(),
                     base_address: 0x4000_C000,
+                    size: None,
+                    irq: None,
                     config: HashMap::new(),
                 },
                 PeripheralConfig {
                     id: "mystery".to_string(),
                     r#type: "unknown".to_string(),
                     base_address: 0x5000_0000,
+                    size: None,
+                    irq: None,
                     config: HashMap::new(),
                 },
             ],
@@ -319,19 +323,29 @@ mod tests {
         let chip = ChipDescriptor {
             name: "test-chip-2".to_string(),
             arch: "cortex-m3".to_string(),
-            flash: MemoryRange { base: 0x0, size: "128KB".to_string() },
-            ram: MemoryRange { base: 0x2000_0000, size: "20KB".to_string() },
+            flash: MemoryRange {
+                base: 0x0,
+                size: "128KB".to_string(),
+            },
+            ram: MemoryRange {
+                base: 0x2000_0000,
+                size: "20KB".to_string(),
+            },
             peripherals: vec![
                 PeripheralConfig {
                     id: "systick".to_string(),
                     r#type: "systick".to_string(),
                     base_address: 0xE000_E010,
+                    size: None,
+                    irq: None,
                     config: HashMap::new(),
                 },
                 PeripheralConfig {
                     id: "gpioa".to_string(),
                     r#type: "gpio".to_string(),
                     base_address: 0x4001_0800,
+                    size: None,
+                    irq: None,
                     config: HashMap::new(),
                 },
             ],
@@ -347,7 +361,11 @@ mod tests {
         let bus = crate::bus::SystemBus::from_config(&chip, &manifest).unwrap();
         assert_eq!(bus.peripherals.len(), 2);
 
-        let systick = bus.peripherals.iter().find(|p| p.name == "systick").unwrap();
+        let systick = bus
+            .peripherals
+            .iter()
+            .find(|p| p.name == "systick")
+            .unwrap();
         assert_eq!(systick.base, 0xE000_E010);
         assert_eq!(systick.size, 0x1000);
         assert_eq!(systick.irq, Some(15));
@@ -356,6 +374,46 @@ mod tests {
         assert_eq!(gpioa.base, 0x4001_0800);
         assert_eq!(gpioa.size, 0x1000);
         assert_eq!(gpioa.irq, None);
+    }
+
+    #[test]
+    fn test_from_config_honors_size_and_irq() {
+        let chip = ChipDescriptor {
+            name: "test-chip-3".to_string(),
+            arch: "cortex-m3".to_string(),
+            flash: MemoryRange {
+                base: 0x0,
+                size: "128KB".to_string(),
+            },
+            ram: MemoryRange {
+                base: 0x2000_0000,
+                size: "20KB".to_string(),
+            },
+            peripherals: vec![PeripheralConfig {
+                id: "uart1".to_string(),
+                r#type: "uart".to_string(),
+                base_address: 0x4000_C000,
+                size: Some("1KB".to_string()),
+                irq: Some(37),
+                config: HashMap::new(),
+            }],
+        };
+
+        let manifest = SystemManifest {
+            name: "test-system-3".to_string(),
+            chip: "test-chip-3".to_string(),
+            memory_overrides: HashMap::new(),
+            external_devices: Vec::new(),
+        };
+
+        let bus = crate::bus::SystemBus::from_config(&chip, &manifest).unwrap();
+        assert_eq!(bus.peripherals.len(), 1);
+
+        let uart1 = &bus.peripherals[0];
+        assert_eq!(uart1.name, "uart1");
+        assert_eq!(uart1.base, 0x4000_C000);
+        assert_eq!(uart1.size, 1024);
+        assert_eq!(uart1.irq, Some(37));
     }
 
     #[test]
