@@ -1,15 +1,14 @@
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
 use labwired_config::{load_test_script, LoadedTestScript, StopReason, TestAssertion, TestLimits};
-use std::sync::atomic::Ordering;
 
 const EXIT_PASS: u8 = 0;
 const EXIT_ASSERT_FAIL: u8 = 1;
@@ -46,6 +45,10 @@ struct Cli {
     /// Path to the system manifest (YAML)
     #[arg(short, long)]
     system: Option<PathBuf>,
+
+    /// Write a state snapshot (JSON) for interactive runs.
+    #[arg(long)]
+    snapshot: Option<PathBuf>,
 
     /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
     #[arg(long, value_parser = parse_u32_addr)]
@@ -170,6 +173,22 @@ struct CortexMCpuSnapshot {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct PeripheralSnapshot {
+    name: String,
+    base: u64,
+    size: u64,
+    irq: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct InteractiveSnapshotConfig {
+    firmware: PathBuf,
+    system: Option<PathBuf>,
+    max_steps: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Snapshot {
     CortexM {
@@ -189,8 +208,118 @@ enum Snapshot {
         limits: TestLimits,
         config: TestConfig,
     },
+    InteractiveCortexM {
+        snapshot_schema_version: String,
+        status: String,
+        steps_executed: u64,
+        cycles: u64,
+        instructions: u64,
+        stop_reason: StopReason,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+        firmware_hash: String,
+        cpu: CortexMCpuSnapshot,
+        peripherals: Vec<PeripheralSnapshot>,
+        config: InteractiveSnapshotConfig,
+    },
 }
 
+fn snapshot_cortexm_cpu(cpu: &labwired_core::cpu::CortexM) -> CortexMCpuSnapshot {
+    CortexMCpuSnapshot {
+        registers: [
+            cpu.r0, cpu.r1, cpu.r2, cpu.r3, cpu.r4, cpu.r5, cpu.r6, cpu.r7, cpu.r8, cpu.r9,
+            cpu.r10, cpu.r11, cpu.r12, cpu.sp, cpu.lr, cpu.pc,
+        ],
+        xpsr: cpu.xpsr,
+        pending_exceptions: cpu.pending_exceptions,
+        primask: cpu.primask,
+        vtor: cpu.vtor.load(Ordering::Relaxed),
+    }
+}
+
+struct InteractiveSnapshotInputs<'a> {
+    firmware_path: &'a Path,
+    system_path: Option<&'a PathBuf>,
+    max_steps: usize,
+    steps_executed: u64,
+    stop_reason: StopReason,
+    message: Option<String>,
+}
+
+fn write_interactive_snapshot(
+    path: &Path,
+    metrics: &labwired_core::metrics::PerformanceMetrics,
+    machine: &labwired_core::Machine<labwired_core::cpu::CortexM>,
+    inputs: InteractiveSnapshotInputs<'_>,
+) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            error!("Failed to create snapshot parent dir {:?}: {}", parent, e);
+            return;
+        }
+    }
+
+    let firmware_hash = match std::fs::read(inputs.firmware_path) {
+        Ok(bytes) => {
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            format!("{:x}", hasher.finalize())
+        }
+        Err(e) => {
+            error!(
+                "Failed to read firmware for snapshot hash {:?}: {}",
+                inputs.firmware_path, e
+            );
+            String::new()
+        }
+    };
+
+    let peripherals = machine
+        .bus
+        .peripherals
+        .iter()
+        .map(|p| PeripheralSnapshot {
+            name: p.name.clone(),
+            base: p.base,
+            size: p.size,
+            irq: p.irq,
+        })
+        .collect::<Vec<_>>();
+
+    let snapshot = Snapshot::InteractiveCortexM {
+        snapshot_schema_version: "1.0".to_string(),
+        status: if matches!(
+            inputs.stop_reason,
+            StopReason::MemoryViolation | StopReason::DecodeError
+        ) {
+            "error".to_string()
+        } else {
+            "ok".to_string()
+        },
+        steps_executed: inputs.steps_executed,
+        cycles: metrics.get_cycles(),
+        instructions: metrics.get_instructions(),
+        stop_reason: inputs.stop_reason,
+        message: inputs.message,
+        firmware_hash,
+        cpu: snapshot_cortexm_cpu(&machine.cpu),
+        peripherals,
+        config: InteractiveSnapshotConfig {
+            firmware: inputs.firmware_path.to_path_buf(),
+            system: inputs.system_path.cloned(),
+            max_steps: inputs.max_steps,
+        },
+    };
+
+    match std::fs::File::create(path) {
+        Ok(f) => {
+            if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                error!("Failed to write snapshot {:?}: {}", path, e);
+            }
+        }
+        Err(e) => error!("Failed to create snapshot {:?}: {}", path, e),
+    }
+}
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -219,7 +348,8 @@ fn run_interactive(cli: Cli) -> ExitCode {
         return ExitCode::from(EXIT_CONFIG_ERROR);
     };
 
-    let bus = match build_bus(cli.system) {
+    let system_path = cli.system.clone();
+    let bus = match build_bus(system_path.clone()) {
         Ok(bus) => bus,
         Err(e) => {
             tracing::error!("{:#}", e);
@@ -254,15 +384,22 @@ fn run_interactive(cli: Cli) -> ExitCode {
         machine.cpu.pc, machine.cpu.sp
     );
 
+    let mut stop_reason = StopReason::MaxSteps;
+    let mut stop_message: Option<String> = None;
+    let mut steps_executed: u64 = 0;
+
     // Run for specified number of steps
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
         if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.pc) {
             info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.pc, step);
+            stop_reason = StopReason::Halt;
+            steps_executed = step as u64;
             break;
         }
         match machine.step() {
             Ok(_) => {
+                steps_executed = (step + 1) as u64;
                 // Periodically report IPS if not in trace mode
                 if !cli.trace && step > 0 && step % 10000 == 0 {
                     info!(
@@ -274,9 +411,32 @@ fn run_interactive(cli: Cli) -> ExitCode {
             }
             Err(e) => {
                 info!("Simulation Error at step {}: {}", step, e);
+                stop_reason = match e {
+                    labwired_core::SimulationError::MemoryViolation(_) => {
+                        StopReason::MemoryViolation
+                    }
+                    labwired_core::SimulationError::DecodeError(_) => StopReason::DecodeError,
+                };
+                stop_message = Some(e.to_string());
                 break;
             }
         }
+    }
+
+    if let Some(path) = &cli.snapshot {
+        write_interactive_snapshot(
+            path,
+            &metrics,
+            &machine,
+            InteractiveSnapshotInputs {
+                firmware_path: &firmware,
+                system_path: system_path.as_ref(),
+                max_steps: cli.max_steps,
+                steps_executed,
+                stop_reason: stop_reason.clone(),
+                message: stop_message,
+            },
+        );
     }
 
     info!("Simulation loop finished (demo).");
