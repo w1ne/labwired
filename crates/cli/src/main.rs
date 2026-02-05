@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
@@ -16,6 +16,18 @@ const EXIT_CONFIG_ERROR: u8 = 2;
 const EXIT_RUNTIME_ERROR: u8 = 3;
 
 const RESULT_SCHEMA_VERSION: &str = "1.0";
+
+fn parse_u32_addr(s: &str) -> Result<u32, String> {
+    let trimmed = s.trim();
+    if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u32::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex address '{}': {}", s, e))
+    } else {
+        u32::from_str(trimmed).map_err(|e| format!("Invalid address '{}': {}", s, e))
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -37,6 +49,10 @@ struct Cli {
     /// Write a state snapshot (JSON) for interactive runs.
     #[arg(long)]
     snapshot: Option<PathBuf>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
 
     /// Enable instruction-level execution tracing
     #[arg(short, long, global = true)]
@@ -73,6 +89,10 @@ struct TestArgs {
     /// Override max steps (takes precedence over script)
     #[arg(long)]
     max_steps: Option<u64>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
 
     /// Disable UART stdout echo (still captured for assertions/artifacts)
     #[arg(long)]
@@ -171,6 +191,23 @@ struct InteractiveSnapshotConfig {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Snapshot {
+    CortexM {
+        cpu: CortexMCpuSnapshot,
+        steps_executed: u64,
+        cycles: u64,
+        instructions: u64,
+        stop_reason: StopReason,
+        stop_reason_details: StopReasonDetails,
+        limits: TestLimits,
+        firmware_hash: String,
+        config: TestConfig,
+    },
+    ConfigError {
+        message: String,
+        stop_reason_details: StopReasonDetails,
+        limits: TestLimits,
+        config: TestConfig,
+    },
     InteractiveCortexM {
         snapshot_schema_version: String,
         status: String,
@@ -283,7 +320,6 @@ fn write_interactive_snapshot(
         Err(e) => error!("Failed to create snapshot {:?}: {}", path, e),
     }
 }
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -355,6 +391,12 @@ fn run_interactive(cli: Cli) -> ExitCode {
     // Run for specified number of steps
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
+        if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.pc) {
+            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.pc, step);
+            stop_reason = StopReason::Halt;
+            steps_executed = step as u64;
+            break;
+        }
         match machine.step() {
             Ok(_) => {
                 steps_executed = (step + 1) as u64;
@@ -673,6 +715,7 @@ fn run_test(args: TestArgs) -> ExitCode {
             vec![],
             &firmware_bytes,
             &uart_tx,
+            &machine.cpu,
             &firmware_path,
             system_path.as_ref(),
             std::time::Duration::from_secs(0),
@@ -688,6 +731,11 @@ fn run_test(args: TestArgs) -> ExitCode {
     let mut stuck_counter: u64 = 0;
 
     for step in 0..max_steps {
+        if !args.breakpoint.is_empty() && args.breakpoint.contains(&machine.cpu.pc) {
+            stop_reason = StopReason::Halt;
+            steps_executed = step;
+            break;
+        }
         if let Some(wall_time_ms) = script_wall_time_ms {
             if start.elapsed().as_millis() >= wall_time_ms as u128 {
                 stop_reason = StopReason::WallTime;
@@ -811,6 +859,7 @@ fn run_test(args: TestArgs) -> ExitCode {
         assertion_results,
         &firmware_bytes,
         &uart_tx,
+        &machine.cpu,
         &firmware_path,
         system_path.as_ref(),
         duration,
@@ -837,6 +886,7 @@ fn write_outputs(
     assertions: Vec<AssertionResult>,
     firmware_bytes: &[u8],
     uart_tx: &Arc<Mutex<Vec<u8>>>,
+    cpu: &labwired_core::cpu::CortexM,
     firmware_path: &Path,
     system_path: Option<&PathBuf>,
     duration: std::time::Duration,
@@ -878,6 +928,41 @@ fn write_outputs(
                     }
                 }
                 Err(e) => error!("Failed to create result.json: {}", e),
+            }
+
+            // snapshot.json
+            let snapshot_path = output_dir.join("snapshot.json");
+            let snapshot = Snapshot::CortexM {
+                cpu: CortexMCpuSnapshot {
+                    registers: [
+                        cpu.r0, cpu.r1, cpu.r2, cpu.r3, cpu.r4, cpu.r5, cpu.r6, cpu.r7, cpu.r8,
+                        cpu.r9, cpu.r10, cpu.r11, cpu.r12, cpu.sp, cpu.lr, cpu.pc,
+                    ],
+                    xpsr: cpu.xpsr,
+                    pending_exceptions: cpu.pending_exceptions,
+                    primask: cpu.primask,
+                    vtor: cpu.vtor.load(Ordering::Relaxed),
+                },
+                steps_executed,
+                cycles: result.cycles,
+                instructions: result.instructions,
+                stop_reason: result.stop_reason.clone(),
+                stop_reason_details: result.stop_reason_details.clone(),
+                limits: result.limits.clone(),
+                firmware_hash: result.firmware_hash.clone(),
+                config: TestConfig {
+                    firmware: result.config.firmware.clone(),
+                    system: result.config.system.clone(),
+                    script: result.config.script.clone(),
+                },
+            };
+            match std::fs::File::create(&snapshot_path) {
+                Ok(f) => {
+                    if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                        error!("Failed to write snapshot.json: {}", e);
+                    }
+                }
+                Err(e) => error!("Failed to create snapshot.json: {}", e),
             }
 
             // uart.log
@@ -979,7 +1064,7 @@ fn write_config_error_outputs(
         stop_reason,
         stop_reason_details: stop_reason_details.clone(),
         limits: resolved_limits.clone(),
-        message: Some(message),
+        message: Some(message.clone()),
         assertions: vec![],
         firmware_hash,
         config: TestConfig {
@@ -1001,6 +1086,26 @@ fn write_config_error_outputs(
                     }
                 }
                 Err(e) => error!("Failed to create result.json: {}", e),
+            }
+
+            let snapshot_path = output_dir.join("snapshot.json");
+            let snapshot = Snapshot::ConfigError {
+                message: message.clone(),
+                stop_reason_details: result.stop_reason_details.clone(),
+                limits: result.limits.clone(),
+                config: TestConfig {
+                    firmware: result.config.firmware.clone(),
+                    system: result.config.system.clone(),
+                    script: result.config.script.clone(),
+                },
+            };
+            match std::fs::File::create(&snapshot_path) {
+                Ok(f) => {
+                    if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                        error!("Failed to write snapshot.json: {}", e);
+                    }
+                }
+                Err(e) => error!("Failed to create snapshot.json: {}", e),
             }
 
             let uart_path = output_dir.join("uart.log");

@@ -1,7 +1,7 @@
 use crate::memory::LinearMemory;
 use crate::peripherals::nvic::NvicState;
 use crate::peripherals::uart::Uart;
-use crate::{Bus, Peripheral, SimResult, SimulationError};
+use crate::{Bus, Peripheral, PeripheralTickResult, SimResult, SimulationError};
 use labwired_config::{parse_size, ChipDescriptor, SystemManifest};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -20,6 +20,12 @@ pub struct SystemBus {
     pub ram: LinearMemory,
     pub peripherals: Vec<PeripheralEntry>,
     pub nvic: Option<Arc<NvicState>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeripheralTickCost {
+    pub index: usize,
+    pub cycles: u32,
 }
 
 impl Default for SystemBus {
@@ -234,6 +240,61 @@ impl SystemBus {
         self.write_u8(addr + 1, ((value >> 8) & 0xFF) as u8)?;
         Ok(())
     }
+
+    pub fn tick_peripherals_with_costs(&mut self) -> (Vec<u32>, Vec<PeripheralTickCost>) {
+        let mut interrupts = Vec::new();
+        let mut costs = Vec::new();
+
+        // 1. Collect IRQs from peripherals and pend them in NVIC
+        for (peripheral_index, p) in self.peripherals.iter_mut().enumerate() {
+            let PeripheralTickResult { irq, cycles } = p.dev.tick();
+            if cycles > 0 {
+                costs.push(PeripheralTickCost {
+                    index: peripheral_index,
+                    cycles,
+                });
+            }
+
+            if irq {
+                if let Some(irq) = p.irq {
+                    if irq >= 16 {
+                        if let Some(nvic) = &self.nvic {
+                            let idx = ((irq - 16) / 32) as usize;
+                            let bit = (irq - 16) % 32;
+                            if idx < 8 {
+                                nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                            }
+                        } else {
+                            // No NVIC, pend legacy style
+                            interrupts.push(irq);
+                        }
+                    } else {
+                        // Core exceptions bypass NVIC ISPR/ISER
+                        interrupts.push(irq);
+                    }
+                }
+            }
+        }
+
+        // 2. Scan NVIC for all Pending & Enabled interrupts
+        if let Some(nvic) = &self.nvic {
+            for idx in 0..8 {
+                let mask =
+                    nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
+                if mask != 0 {
+                    for bit in 0..32 {
+                        if (mask & (1 << bit)) != 0 {
+                            let irq = 16 + (idx as u32 * 32) + bit;
+                            tracing::info!("Bus: NVIC Signaling Pending IRQ {}", irq);
+                            interrupts.push(irq);
+                        }
+                    }
+                }
+            }
+        }
+
+        (interrupts, costs)
+    }
 }
 
 impl crate::Bus for SystemBus {
@@ -274,48 +335,7 @@ impl crate::Bus for SystemBus {
     }
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
-        let mut interrupts = Vec::new();
-
-        // 1. Collect IRQs from peripherals and pend them in NVIC
-        for p in &mut self.peripherals {
-            if p.dev.tick() {
-                if let Some(irq) = p.irq {
-                    if irq >= 16 {
-                        if let Some(nvic) = &self.nvic {
-                            let idx = ((irq - 16) / 32) as usize;
-                            let bit = (irq - 16) % 32;
-                            if idx < 8 {
-                                nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
-                            }
-                        } else {
-                            // No NVIC, pend legacy style
-                            interrupts.push(irq);
-                        }
-                    } else {
-                        // Core exceptions bypass NVIC ISPR/ISER
-                        interrupts.push(irq);
-                    }
-                }
-            }
-        }
-
-        // 2. Scan NVIC for all Pending & Enabled interrupts
-        if let Some(nvic) = &self.nvic {
-            for idx in 0..8 {
-                let mask =
-                    nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
-                if mask != 0 {
-                    for bit in 0..32 {
-                        if (mask & (1 << bit)) != 0 {
-                            let irq = 16 + (idx as u32 * 32) + bit;
-                            tracing::info!("Bus: NVIC Signaling Pending IRQ {}", irq);
-                            interrupts.push(irq);
-                        }
-                    }
-                }
-            }
-        }
-
+        let (interrupts, _costs) = self.tick_peripherals_with_costs();
         interrupts
     }
 }
