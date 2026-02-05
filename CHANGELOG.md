@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-02-05
+
+### Added
+- **Interactive Debugging (DAP)**:
+    - **DAP Server (`labwired-dap`)**: Implemented a standalone Debug Adapter Protocol server for VS Code integration.
+    - **Core Debug Control**: Added `DebugControl` trait for deterministic breakpoints and instruction-level stepping.
+    - **Register Inspection**: Full visibility of R0-R15 (including SP, LR, PC) in VS Code Variables view.
+    - **Source-Level Debugging**: Integrated **DWARF** support via `addr2line` and `gimli` to map execution points back to C/Rust source files.
+- **VS Code Extension**: Initial implementation of the `labwired-vscode` extension providing a seamless debugging experience.
+
 ## [0.9.0] - 2026-02-04
 
 ### Added
