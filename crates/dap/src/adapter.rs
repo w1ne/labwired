@@ -83,23 +83,69 @@ impl LabwiredAdapter {
         }
     }
 
-    pub fn set_breakpoints(&self, _path: String, _lines: Vec<i64>) -> Result<()> {
-        // Map lines to addresses? 
-        // For MVP, we only support function addresses or raw addresses.
-        // If VS Code sends source breakpoints, we need DWARF.
-        // For now, let's assume we can't map lines without DWARF.
-        // But we promised "PC-based".
-        // DAP client sends `setBreakpoints` with source file and lines.
-        // We will need DWARF to support this PROPERLY.
-        //
-        // Workaround for MVP:
-        // User sets breakpoint at "main". VS Code resolves "main" to address if it has symbol info?
-        // No, VS Code relies on debug adapter for resolution usually.
-        //
-        // Alternative: Use `functionBreakpoints`.
-        // We will assume the user uses Function Breakpoints in VS Code, which sends function names.
-        // We then resolve symbol -> address using symbol table from ELF (which loader has!).
+    pub fn set_breakpoints(&self, path: String, lines: Vec<i64>) -> Result<()> {
+        let mut addresses = Vec::new();
+        
+        let syms_guard = self.symbols.lock().unwrap();
+        if let Some(syms) = syms_guard.as_ref() {
+            for line in lines {
+                if let Some(addr) = syms.location_to_pc(&path, line as u32) {
+                    addresses.push(addr as u32);
+                } else {
+                    tracing::warn!("Could not resolve breakpoint at {}:{}", path, line);
+                }
+            }
+        }
+        
+        let mut machine_guard = self.machine.lock().unwrap();
+        if let Some(machine) = machine_guard.as_mut() {
+            machine.clear_breakpoints();
+            for addr in addresses {
+                machine.add_breakpoint(addr);
+                tracing::info!("Breakpoint set at {:#x}", addr);
+            }
+        }
         
         Ok(())
+    }
+
+    pub fn read_memory(&self, addr: u64, len: usize) -> Result<Vec<u8>> {
+        let machine_guard = self.machine.lock().unwrap();
+        if let Some(machine) = machine_guard.as_ref() {
+            machine.read_memory(addr as u32, len).map_err(|e| anyhow!("Memory read failed: {:?}", e))
+        } else {
+            Err(anyhow!("Machine not initialized"))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_adapter_breakpoints() {
+        let elf_path = PathBuf::from("../../target/thumbv7m-none-eabi/debug/firmware");
+        if !elf_path.exists() { return; }
+
+        let adapter = LabwiredAdapter::new();
+        adapter.load_firmware(elf_path).expect("Failed to load firmware");
+
+        // Set breakpoint at main.rs:11
+        adapter.set_breakpoints("main.rs".to_string(), vec![11]).expect("Failed to set breakpoints");
+    }
+
+    #[test]
+    fn test_adapter_read_memory() {
+        let elf_path = PathBuf::from("../../target/thumbv7m-none-eabi/debug/firmware");
+        if !elf_path.exists() { return; }
+
+        let adapter = LabwiredAdapter::new();
+        adapter.load_firmware(elf_path).expect("Failed to load firmware");
+
+        // Read first few bytes of Flash (Vector Table)
+        let data = adapter.read_memory(0x0, 4).expect("Failed to read memory");
+        assert_eq!(data.len(), 4);
     }
 }

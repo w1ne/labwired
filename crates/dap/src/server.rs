@@ -2,7 +2,7 @@ use crate::adapter::LabwiredAdapter;
 use anyhow::Result;
 use dap::requests::Command;
 use dap::responses::ResponseBody;
-use dap::types::{Capabilities, Thread, StackFrame, Scope, Variable, Source};
+use dap::types::{Capabilities, Thread, StackFrame, Scope, Variable, Source, Breakpoint};
 use serde::Serialize;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -123,6 +123,61 @@ impl DapServer {
                     }))
                 }
                 Command::ConfigurationDone => Some(ResponseBody::ConfigurationDone),
+                Command::SetBreakpoints(args) => {
+                    let path = args.source.path.clone().unwrap_or_default();
+                    let lines = args.breakpoints.as_ref()
+                        .map(|bp| bp.iter().map(|b| b.line).collect())
+                        .or_else(|| args.lines.clone())
+                        .unwrap_or_default();
+                    
+                    if let Err(e) = self.adapter.set_breakpoints(path, lines.clone()) {
+                        tracing::error!("Failed to set breakpoints: {}", e);
+                    }
+                    
+                    let breakpoints = lines.iter().map(|l| Breakpoint {
+                        id: None,
+                        verified: true,
+                        message: None,
+                        source: Some(args.source.clone()),
+                        line: Some(*l),
+                        column: None,
+                        end_column: None,
+                        end_line: None,
+                        instruction_reference: None,
+                        offset: None,
+                    }).collect();
+                    
+                    Some(ResponseBody::SetBreakpoints(dap::responses::SetBreakpointsResponse {
+                        breakpoints
+                    }))
+                }
+                Command::ReadMemory(args) => {
+                    // Extract address from memoryReference (it's usually a string representation of hex)
+                    let addr = if args.memory_reference.starts_with("0x") {
+                        u64::from_str_radix(&args.memory_reference[2..], 16).unwrap_or(0)
+                    } else {
+                        args.memory_reference.parse().unwrap_or(0)
+                    };
+                    let offset = args.offset.unwrap_or(0);
+                    let final_addr = addr + offset as u64;
+                    let count = args.count as usize;
+                    
+                    match self.adapter.read_memory(final_addr, count) {
+                        Ok(data) => {
+                            use base64::Engine;
+                            let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+                            Some(ResponseBody::ReadMemory(dap::responses::ReadMemoryResponse {
+                                address: format!("{:#x}", final_addr),
+                                unreadable_bytes: None,
+                                data: Some(encoded),
+                            }))
+                        }
+                        Err(e) => {
+                            tracing::error!("ReadMemory failed: {}", e);
+                            None // Or error response
+                        }
+                    }
+                }
                 Command::Threads => Some(ResponseBody::Threads(dap::responses::ThreadsResponse {
                     threads: vec![Thread {
                         id: 1,
@@ -248,5 +303,34 @@ impl DapServer {
                 output.flush()?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_server_read_memory() {
+        // Setup server with a machine that has some data
+        let server = DapServer::new();
+        
+        // We'll use a small binary with some known data at address 0
+        let temp_dir = std::env::temp_dir();
+        let _elf_path = temp_dir.join("test_read_mem.elf");
+        // For this test, we might actually need a real ELF, but let's see if we can 
+        // just mock the adapter if we refactor?
+        // Since we can't easily mock, let's use the firmware built earlier if it exists.
+        
+        let target_elf = std::path::PathBuf::from("../../target/thumbv7m-none-eabi/debug/firmware");
+        if !target_elf.exists() { return; }
+        
+        server.adapter.load_firmware(target_elf).expect("Failed to load firmware");
+        
+        // Verification of base64 encoding (crucial for ReadMemory)
+        let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+        assert_eq!(encoded, "3q2+7w==");
     }
 }

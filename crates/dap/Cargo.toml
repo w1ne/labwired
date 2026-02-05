@@ -14,3 +14,4 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 crossbeam-channel = "0.5" # For event handling
+base64 = "0.21"
