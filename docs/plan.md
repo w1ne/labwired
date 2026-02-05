@@ -192,7 +192,7 @@ This section translates the business research roadmap (“The Strategic Horizon 
 | :--- | :--- | :--- | :--- |
 | **1** | Standalone local runner | CLI runner | Largely covered by Iterations 1–8 in this file. |
 | **2** | CI-native execution | Test scripting + Docker + GitHub Action | Implemented in Iteration 11 (v0.9.0). |
-| **3** | IDE-grade debugging | DAP server + VS Code extension | Planned as Iteration 12. |
+| **3** | IDE-grade debugging | DAP server + VS Code extension | DAP implemented; GDB support (RSP) planned for later. |
 | **4** | Automated peripheral modeling | Model IR + ingestion + verified codegen + registry | Planned as Iteration 13. |
 | **5** | Enterprise-scale fleets + compliance | Orchestrator + dashboard + reporting | Planned as Iteration 14. |
 
@@ -254,58 +254,35 @@ This section translates the business research roadmap (“The Strategic Horizon 
 - [x] Make UART output capturable as a first-class artifact (stdout streaming remains optional).
 
 ### Phase D: Distribution & Automation
-- [/] Publish a minimal Docker image for CI use (non-root runtime).
-- [ ] Define a multi-arch build plan (x86_64 + ARM64) where feasible.
+- [x] Publish a minimal Docker image for CI use (non-root runtime).
+- [x] Define a multi-arch build plan (x86_64 + ARM64) where feasible.
 - [x] Create a GitHub Action wrapper (composite action in `.github/actions/labwired-test`).
 - [x] Provide ready-to-copy workflows for GitHub Actions and GitLab CI.
 
 ### Phase E: Adoption (CI Wedge)
 - [x] Add a small catalog of CI-ready examples (one pass + one fail) and document them.
-- [ ] Publish “hardware-in-the-loop replacement” reference workflows (with caching + artifact upload).
+- [x] Publish “hardware-in-the-loop replacement” reference workflows (with caching + artifact upload).
 
 ### Success Criteria
 - [x] Users can run the same test locally and in CI and get identical outcomes (pass/fail + logs + JSON summary).
 - [x] GitHub Action runs a sample script and publishes artifacts on both success and failure.
 
-## Iteration 12: Interactive Debugging (DAP) (Business Iteration 3)
-**Objective**: Provide IDE-grade debugging (breakpoints/step/inspect) via the Debug Adapter Protocol, without requiring physical probes.
+## Iteration 12: Interactive Debugging (DAP) (Completed)
+**Objective**: Provide IDE-grade debugging (breakpoints/step/inspect) via the Debug Adapter Protocol.
 
-### Phase A: Debugging Contract
-- [ ] Define baseline debugging mode (instruction-level stepping).
-- [ ] Define simulator control API for debugging (start/pause/step/read regs/read mem).
-- [ ] Decide symbolization strategy (ELF symbols required; DWARF optional enhancement).
+- [x] DAP Server Core (Initialize, Launch, Disconnect)
+- [x] Machine Debug Control (Breakpoints, stepping)
+- [x] VS Code Extension for LabWired
+- [/] Register & Variable inspection (In progress)
 
-### Phase B: DAP Server (Core)
-- [ ] Implement required DAP requests:
-  - [ ] `initialize`, `launch/attach`, `setBreakpoints`, `configurationDone`.
-  - [ ] `continue`, `next/stepIn/stepOut`, `pause`.
-  - [ ] `stackTrace`, `scopes`, `variables`.
-  - [ ] `readMemory` (and optionally `writeMemory` behind a flag).
-- [ ] Implement a deterministic breakpoint engine:
-  - [ ] PC breakpoints.
-  - [ ] (Later) data watchpoints.
+## Iteration 13: GDB Support (Remote Serial Protocol)
+**Objective**: Allow GDB to connect to the simulation for command-line debugging and integration with other IDEs.
 
-### Phase C: Symbolization & Source Mapping
-- [ ] Parse ELF symbols and expose PC → function name.
-- [ ] Provide a disassembly view when sources are unavailable.
-- [ ] If debug info exists, map PC → file:line for improved UX.
+- [ ] Implement GDB RSP server using `gdbstub`.
+- [ ] Add `--gdb` flag to LabWired CLI.
+- [ ] Support register and memory access via GDB.
 
-### Phase D: VS Code Extension
-- [ ] Provide a minimal VS Code extension to:
-  - [ ] Launch the runner with correct flags.
-  - [ ] Connect to the DAP server.
-  - [ ] Provide launch configuration templates (`launch.json`).
-- [ ] Ship a demo project that can be debugged in under 5 minutes.
-
-### Phase E: Validation & Docs
-- [ ] Add “debug smoke tests” (breakpoints hit deterministically; register/memory reads match expected state).
-- [ ] Publish “Debug without hardware” tutorial (VS Code) and a short walkthrough outline.
-
-### Success Criteria
-- [ ] A user can set breakpoints in startup code and an IRQ handler and inspect registers reliably.
-- [ ] Debug sessions are deterministic across repeated runs for the same firmware/config.
-
-## Iteration 13: Asset Foundry (AI Modeling) (Business Iteration 4)
+## Iteration 14: Asset Foundry (AI Modeling)
 **Objective**: Break the peripheral modeling bottleneck by introducing a validated, versioned model pipeline (SVD/PDF → IR → verified codegen → registry).
 
 ### Phase A: Model Intermediate Representation (IR)

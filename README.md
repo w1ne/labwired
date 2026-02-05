@@ -92,6 +92,51 @@ cargo build --release -p labwired-cli
 
 See `docs/ci_test_runner.md` for schema, exit codes, and artifact formats.
 
+## 🔄 CI Integration
+
+LabWired integrates seamlessly into your CI/CD pipeline, replacing physical hardware with deterministic simulation.
+
+### Quick Start
+
+**GitHub Actions:**
+```yaml
+- uses: w1ne/labwired/.github/actions/labwired-test@main
+  with:
+    script: tests/firmware-test.yaml
+    output_dir: test-results
+```
+
+**GitLab CI:**
+```yaml
+test:
+  script:
+    - labwired test --script tests/firmware-test.yaml --output-dir results
+  artifacts:
+    reports:
+      junit: results/junit.xml
+```
+
+**Docker (when published):**
+```bash
+docker run --rm -v $PWD:/workspace ghcr.io/w1ne/labwired:latest \
+  test --script tests/firmware-test.yaml
+```
+
+### Resources
+
+- **[CI Integration Guide](docs/ci_integration.md)** - Complete setup instructions
+- **[Workflow Templates](examples/workflows/)** - Ready-to-use GitHub Actions & GitLab CI templates
+- **[Test Examples](examples/ci/)** - Sample test scripts
+
+### Benefits
+
+- ✅ No physical hardware required in CI
+- ✅ Deterministic, reproducible results
+- ✅ Parallel testing across multiple targets
+- ✅ Fast feedback (no flashing delays)
+- ✅ Fault injection testing support
+
+
 ## 🤝 Development Workflow
 We follow **Gitflow** and enforce strict quality gates.
 
@@ -109,6 +154,8 @@ See [Release & Merging Strategy](docs/release_strategy.md) for the full protocol
 - [Implementation Plan](docs/plan.md)
 - [Architecture](docs/architecture.md)
 - [Release Strategy](docs/release_strategy.md)
+- [CI Integration Guide](docs/ci_integration.md)
+
 
 ## ⚖️ License
 MIT

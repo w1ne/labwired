@@ -6,7 +6,7 @@ members = [
     "crates/cli", 
     "crates/firmware",
     "crates/firmware-ci-fixture",
-    "crates/config",
+    "crates/config", "crates/dap",
 ]
 exclude = ["crates/firmware-hal-test"]
 default-members = ["crates/cli", "crates/core", "crates/loader"]

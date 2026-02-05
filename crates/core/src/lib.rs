@@ -54,6 +54,10 @@ pub trait Cpu {
     fn get_vtor(&self) -> u32;
     fn set_vtor(&mut self, val: u32);
     fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>);
+    
+    // Debug Access
+    fn get_register(&self, id: u8) -> u32;
+    fn set_register(&mut self, id: u8, val: u32);
 }
 
 /// Trait representing a memory-mapped peripheral
@@ -110,10 +114,42 @@ pub trait Bus {
     }
 }
 
+
+use std::collections::HashSet;
+
+/// Trait for controlling the machine in debug mode
+pub trait DebugControl {
+    fn add_breakpoint(&mut self, addr: u32);
+    fn remove_breakpoint(&mut self, addr: u32);
+    fn clear_breakpoints(&mut self);
+    
+    /// Run until breakpoint or steps limit
+    fn run(&mut self, max_steps: Option<u32>) -> SimResult<StopReason>;
+    
+    /// Step a single instruction
+    fn step_single(&mut self) -> SimResult<StopReason>;
+    
+    fn read_core_reg(&self, id: u8) -> u32;
+    fn write_core_reg(&mut self, id: u8, val: u32);
+    
+    fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>>;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StopReason {
+    Breakpoint(u32),
+    StepDone,
+    MaxStepsReached,
+    ManualStop,
+}
+
 pub struct Machine<C: Cpu> {
     pub cpu: C,
     pub bus: bus::SystemBus,
     pub observers: Vec<Arc<dyn SimulationObserver>>,
+    
+    // Debug state
+    pub breakpoints: HashSet<u32>,
 }
 
 impl<C: Cpu + Default> Machine<C> {
@@ -180,6 +216,7 @@ impl<C: Cpu + Default> Machine<C> {
             cpu,
             bus,
             observers: Vec::new(),
+            breakpoints: HashSet::new(),
         }
     }
 }
@@ -251,5 +288,68 @@ impl<C: Cpu> Machine<C> {
         }
 
         res
+    }
+}
+
+impl<C: Cpu> DebugControl for Machine<C> {
+    fn add_breakpoint(&mut self, addr: u32) {
+        self.breakpoints.insert(addr);
+    }
+
+    fn remove_breakpoint(&mut self, addr: u32) {
+        self.breakpoints.remove(&addr);
+    }
+
+    fn clear_breakpoints(&mut self) {
+        self.breakpoints.clear();
+    }
+
+    fn run(&mut self, max_steps: Option<u32>) -> SimResult<StopReason> {
+        let mut steps = 0;
+        loop {
+            // Check breakpoints BEFORE stepping
+            let pc = self.cpu.get_pc();
+            // Note: breakpoints typically match the exact PC.
+            // Thumb instructions are at even addresses, usually.
+            // If the user sets a BP at an odd address (Thumb function pointer), we should mask it?
+            // Usually DAP clients send the symbol address.
+            // Let's assume exact match for now, but mask LSB.
+            let pc_aligned = pc & !1;
+            
+            if self.breakpoints.contains(&pc_aligned) {
+                 return Ok(StopReason::Breakpoint(pc));
+            }
+            
+            self.step()?;
+            steps += 1;
+            
+            if let Some(max) = max_steps {
+                if steps >= max {
+                    return Ok(StopReason::MaxStepsReached);
+                }
+            }
+        }
+    }
+
+    fn step_single(&mut self) -> SimResult<StopReason> {
+        self.step()?;
+        Ok(StopReason::StepDone)
+    }
+
+    fn read_core_reg(&self, id: u8) -> u32 {
+        self.cpu.get_register(id)
+    }
+
+    fn write_core_reg(&mut self, id: u8, val: u32) {
+        self.cpu.set_register(id, val);
+    }
+
+    fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>> {
+        let mut data = Vec::with_capacity(len);
+        for i in 0..len {
+            let byte = self.bus.read_u8((addr as u64) + (i as u64))?;
+            data.push(byte);
+        }
+        Ok(data)
     }
 }
