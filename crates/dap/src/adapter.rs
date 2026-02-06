@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use anyhow::{anyhow, Result};
 use labwired_core::{cpu::CortexM, DebugControl, Machine, StopReason};
 use labwired_loader::SymbolProvider;
