@@ -1,7 +1,7 @@
 use crate::SimResult;
 
 /// STM32F1 compatible SPI peripheral
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct Spi {
     cr1: u16,
     cr2: u16,
@@ -74,5 +74,9 @@ impl crate::Peripheral for Spi {
 
         self.write_reg(reg_offset, reg_val);
         Ok(())
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }

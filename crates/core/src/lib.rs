@@ -7,6 +7,7 @@ pub mod metrics;
 pub mod multi_core;
 pub mod peripherals;
 pub mod signals;
+pub mod snapshot;
 
 use std::any::Any;
 use std::sync::atomic::AtomicU32;
@@ -58,6 +59,7 @@ pub trait Cpu {
     // Debug Access
     fn get_register(&self, id: u8) -> u32;
     fn set_register(&mut self, id: u8, val: u32);
+    fn snapshot(&self) -> snapshot::CpuSnapshot;
 }
 
 /// Trait representing a memory-mapped peripheral
@@ -75,6 +77,9 @@ pub trait Peripheral: std::fmt::Debug + Send {
     }
     fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
         None
+    }
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::Value::Null
     }
 }
 
@@ -288,6 +293,18 @@ impl<C: Cpu> Machine<C> {
         }
 
         res
+    }
+
+    pub fn snapshot(&self) -> snapshot::MachineSnapshot {
+        snapshot::MachineSnapshot {
+            cpu: self.cpu.snapshot(),
+            peripherals: self
+                .bus
+                .peripherals
+                .iter()
+                .map(|p| (p.name.clone(), p.dev.snapshot()))
+                .collect(),
+        }
     }
 }
 

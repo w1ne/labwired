@@ -1109,4 +1109,100 @@ mod tests {
         machine.step().unwrap();
         assert_eq!(machine.cpu.r4, 0x34127856); // Halfwords byte-reversed
     }
+
+    #[test]
+    fn test_adc_conversion() {
+        use crate::peripherals::adc::Adc;
+
+        // 1. Setup Machine with ADC
+        let mut bus = crate::bus::SystemBus::new();
+        bus.peripherals.push(crate::bus::PeripheralEntry {
+            name: "adc1".to_string(),
+            base: 0x4001_2400,
+            size: 0x400,
+            irq: Some(18), // ADC1_2 global interrupt
+            dev: Box::new(Adc::new()),
+        });
+
+        let mut machine: Machine<crate::cpu::CortexM> = Machine::with_bus(bus);
+
+        // 2. Enable ADC (ADON=1 in CR2)
+        // Offset 0x08
+        let adc_base = 0x4001_2400;
+        let cr2_addr = adc_base + 0x08;
+        machine.bus.write_u32(cr2_addr, 1).unwrap(); // ADON=1
+
+        // 3. Start Conversion (SWSTART=1 in CR2)
+        // Set SWSTART (bit 30) | ADON (bit 0)
+        machine.bus.write_u32(cr2_addr, (1 << 30) | 1).unwrap();
+
+        // 4. Step simulation to process conversion (cycles = 14)
+        // We need to execute instructions or just tick.
+        // Let's run NOPs.
+        machine.bus.write_u16(0x0, 0xBF00).unwrap(); // NOP
+        machine.cpu.pc = 0x0;
+
+        // Run enough steps for conversion
+        for _ in 0..20 {
+            machine.step().unwrap();
+        }
+
+        // 5. Verify Result
+        let dr_addr = adc_base + 0x4C;
+        let sr_addr = adc_base + 0x00;
+
+        let dr = machine.bus.read_u32(dr_addr).unwrap();
+        let sr = machine.bus.read_u32(sr_addr).unwrap();
+
+        assert_ne!(dr, 0, "Data Register should have updated value");
+        assert_eq!(
+            sr & (1 << 1),
+            (1 << 1),
+            "EOC bit should be set in Status Register"
+        );
+    }
+
+    #[test]
+    fn test_state_snapshot() {
+        use crate::snapshot::MachineSnapshot;
+
+        let bus = crate::bus::SystemBus::new();
+        // Use default peripherals (Rest of setup matches SystemBus defaults)
+
+        let mut machine: Machine<crate::cpu::CortexM> = Machine::with_bus(bus);
+
+        // Modify CPU state
+        machine.cpu.r0 = 42;
+        machine.cpu.set_pc(0x0800_0000);
+
+        // Modify Peripheral state (GPIOA ODR)
+        machine.bus.write_u32(0x4001_080C, 0xAA).unwrap();
+
+        let val = machine.bus.read_u32(0x4001_080C).unwrap();
+        assert_eq!(val, 0xAA, "Readback failed");
+
+        // Take snapshot
+        let snap = machine.snapshot();
+
+        // Verify CPU
+        assert_eq!(snap.cpu.registers[0], 42);
+        assert_eq!(snap.cpu.registers[15], 0x0800_0000); // PC is R15
+
+        // Verify Peripheral via JSON Value inspection
+        // snap.peripherals is HashMap<String, serde_json::Value>
+        let gpioa = snap.peripherals.get("gpioa").expect("gpioa missing");
+        let odr = gpioa
+            .get("odr")
+            .expect("odr missing")
+            .as_u64()
+            .expect("odr not u64");
+        assert_eq!(odr, 0xAA);
+
+        // Check serialization
+        let json_str = serde_json::to_string_pretty(&snap).unwrap();
+        println!("Snapshot JSON:\n{}", json_str);
+
+        // Check deserialization
+        let _snap_restored: MachineSnapshot = serde_json::from_str(&json_str).unwrap();
+    }
 }
