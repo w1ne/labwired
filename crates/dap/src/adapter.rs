@@ -9,6 +9,12 @@ pub struct LabwiredAdapter {
     pub symbols: Arc<Mutex<Option<SymbolProvider>>>,
 }
 
+impl Default for LabwiredAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LabwiredAdapter {
     pub fn new() -> Self {
         Self {

@@ -4,7 +4,6 @@ use goblin::elf::Elf;
 use labwired_core::memory::ProgramImage;
 use std::fs;
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -59,7 +58,7 @@ pub struct SymbolProvider {
     #[allow(dead_code)]
     data: Arc<Vec<u8>>,
     context: addr2line::Context<
-        addr2line::gimli::EndianReader<addr2line::gimli::RunTimeEndian, Rc<[u8]>>,
+        addr2line::gimli::EndianReader<addr2line::gimli::RunTimeEndian, Arc<[u8]>>,
     >,
     // Map of (file_name, line) -> address
     line_map: std::collections::HashMap<(String, u32), u64>,
@@ -76,22 +75,20 @@ impl SymbolProvider {
         let slice: &'static [u8] = unsafe { std::mem::transmute(&data[..]) };
 
         let object = object::File::parse(slice).context("Failed to parse ELF for symbols")?;
-        let context =
-            addr2line::Context::new(&object).context("Failed to create addr2line context")?;
 
         let mut line_map = std::collections::HashMap::new();
 
         // Build line map using gimli for reverse lookup
         let load_section = |id: gimli::SectionId| -> std::result::Result<
-            addr2line::gimli::EndianReader<gimli::RunTimeEndian, Rc<[u8]>>,
+            addr2line::gimli::EndianReader<gimli::RunTimeEndian, Arc<[u8]>>,
             gimli::Error,
         > {
             use object::ObjectSection;
             let data = object
                 .section_by_name(id.name())
                 .and_then(|s| s.uncompressed_data().ok())
-                .map(|d| Rc::from(&d[..]))
-                .unwrap_or_else(|| Rc::from(&[][..]));
+                .map(|d| Arc::from(&d[..]))
+                .unwrap_or_else(|| Arc::from(&[][..]));
             Ok(gimli::EndianReader::new(data, gimli::RunTimeEndian::Little))
         };
 
@@ -128,6 +125,9 @@ impl SymbolProvider {
                 }
             }
         }
+
+        let context =
+            addr2line::Context::from_dwarf(dwarf).context("Failed to create context from dwarf")?;
 
         Ok(Self {
             data,

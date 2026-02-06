@@ -390,6 +390,7 @@ fn run_interactive(cli: Cli) -> ExitCode {
 
     let mut stop_reason = StopReason::MaxSteps;
     let mut steps_executed: u64 = 0;
+    let mut stop_message: Option<String> = None;
 
     // Check if GDB server is requested
     if let Some(port) = cli.gdb {
