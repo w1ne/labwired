@@ -59,6 +59,9 @@ assertions:
     let result_path = output_dir.join("result.json");
     assert!(result_path.exists());
 
+    let snapshot_path = output_dir.join("snapshot.json");
+    assert!(snapshot_path.exists());
+
     let junit_path = output_dir.join("junit.xml");
     assert!(junit_path.exists());
     let junit = std::fs::read_to_string(&junit_path).unwrap();
@@ -88,6 +91,13 @@ assertions:
         .as_str()
         .unwrap()
         .contains("fixture.elf"));
+
+    let snapshot_content = std::fs::read_to_string(&snapshot_path).unwrap();
+    let snapshot: serde_json::Value = serde_json::from_str(&snapshot_content).unwrap();
+    assert_eq!(snapshot["type"], "cortex_m");
+    assert!(snapshot["cpu"]["registers"].is_array());
+    assert_eq!(snapshot["cpu"]["registers"].as_array().unwrap().len(), 16);
+    assert!(snapshot["cpu"]["registers"][15].is_number());
 
     // Clean up
     let _ = std::fs::remove_dir_all(&dir);
@@ -147,6 +157,16 @@ bad_field: 123
 
     let uart_path = output_dir.join("uart.log");
     assert!(uart_path.exists());
+
+    let snapshot_path = output_dir.join("snapshot.json");
+    assert!(snapshot_path.exists());
+    let snapshot_content = std::fs::read_to_string(&snapshot_path).unwrap();
+    let snapshot: serde_json::Value = serde_json::from_str(&snapshot_content).unwrap();
+    assert_eq!(snapshot["type"], "config_error");
+    assert!(snapshot["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("Failed"));
 
     let _ = std::fs::remove_dir_all(&output_dir);
 }

@@ -1,9 +1,10 @@
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::str::FromStr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
@@ -15,6 +16,18 @@ const EXIT_CONFIG_ERROR: u8 = 2;
 const EXIT_RUNTIME_ERROR: u8 = 3;
 
 const RESULT_SCHEMA_VERSION: &str = "1.0";
+
+fn parse_u32_addr(s: &str) -> Result<u32, String> {
+    let trimmed = s.trim();
+    if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u32::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex address '{}': {}", s, e))
+    } else {
+        u32::from_str(trimmed).map_err(|e| format!("Invalid address '{}': {}", s, e))
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -33,6 +46,14 @@ struct Cli {
     #[arg(short, long)]
     system: Option<PathBuf>,
 
+    /// Write a state snapshot (JSON) for interactive runs.
+    #[arg(long)]
+    snapshot: Option<PathBuf>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
+
     /// Enable instruction-level execution tracing
     #[arg(short, long, global = true)]
     trace: bool,
@@ -40,6 +61,10 @@ struct Cli {
     /// Maximum number of steps to execute (default: 20000)
     #[arg(long, default_value = "20000")]
     max_steps: usize,
+
+    /// Start a GDB server on the specified port
+    #[arg(long)]
+    gdb: Option<u16>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -68,6 +93,10 @@ struct TestArgs {
     /// Override max steps (takes precedence over script)
     #[arg(long)]
     max_steps: Option<u64>,
+
+    /// Breakpoint PC address (repeatable). Stops simulation when PC matches.
+    #[arg(long, value_parser = parse_u32_addr)]
+    breakpoint: Vec<u32>,
 
     /// Disable UART stdout echo (still captured for assertions/artifacts)
     #[arg(long)]
@@ -137,6 +166,164 @@ struct TestConfig {
     script: PathBuf,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct CortexMCpuSnapshot {
+    registers: [u32; 16],
+    xpsr: u32,
+    pending_exceptions: u32,
+    primask: bool,
+    vtor: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PeripheralSnapshot {
+    name: String,
+    base: u64,
+    size: u64,
+    irq: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct InteractiveSnapshotConfig {
+    firmware: PathBuf,
+    system: Option<PathBuf>,
+    max_steps: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Snapshot {
+    CortexM {
+        cpu: CortexMCpuSnapshot,
+        steps_executed: u64,
+        cycles: u64,
+        instructions: u64,
+        stop_reason: StopReason,
+        stop_reason_details: StopReasonDetails,
+        limits: TestLimits,
+        firmware_hash: String,
+        config: TestConfig,
+    },
+    ConfigError {
+        message: String,
+        stop_reason_details: StopReasonDetails,
+        limits: TestLimits,
+        config: TestConfig,
+    },
+    InteractiveCortexM {
+        snapshot_schema_version: String,
+        status: String,
+        steps_executed: u64,
+        cycles: u64,
+        instructions: u64,
+        stop_reason: StopReason,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+        firmware_hash: String,
+        cpu: CortexMCpuSnapshot,
+        peripherals: Vec<PeripheralSnapshot>,
+        config: InteractiveSnapshotConfig,
+    },
+}
+
+fn snapshot_cortexm_cpu(cpu: &labwired_core::cpu::CortexM) -> CortexMCpuSnapshot {
+    CortexMCpuSnapshot {
+        registers: [
+            cpu.r0, cpu.r1, cpu.r2, cpu.r3, cpu.r4, cpu.r5, cpu.r6, cpu.r7, cpu.r8, cpu.r9,
+            cpu.r10, cpu.r11, cpu.r12, cpu.sp, cpu.lr, cpu.pc,
+        ],
+        xpsr: cpu.xpsr,
+        pending_exceptions: cpu.pending_exceptions,
+        primask: cpu.primask,
+        vtor: cpu.vtor.load(Ordering::Relaxed),
+    }
+}
+
+struct InteractiveSnapshotInputs<'a> {
+    firmware_path: &'a Path,
+    system_path: Option<&'a PathBuf>,
+    max_steps: usize,
+    steps_executed: u64,
+    stop_reason: StopReason,
+    message: Option<String>,
+}
+
+fn write_interactive_snapshot(
+    path: &Path,
+    metrics: &labwired_core::metrics::PerformanceMetrics,
+    machine: &labwired_core::Machine<labwired_core::cpu::CortexM>,
+    inputs: InteractiveSnapshotInputs<'_>,
+) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            error!("Failed to create snapshot parent dir {:?}: {}", parent, e);
+            return;
+        }
+    }
+
+    let firmware_hash = match std::fs::read(inputs.firmware_path) {
+        Ok(bytes) => {
+            let mut hasher = Sha256::new();
+            hasher.update(&bytes);
+            format!("{:x}", hasher.finalize())
+        }
+        Err(e) => {
+            error!(
+                "Failed to read firmware for snapshot hash {:?}: {}",
+                inputs.firmware_path, e
+            );
+            String::new()
+        }
+    };
+
+    let peripherals = machine
+        .bus
+        .peripherals
+        .iter()
+        .map(|p| PeripheralSnapshot {
+            name: p.name.clone(),
+            base: p.base,
+            size: p.size,
+            irq: p.irq,
+        })
+        .collect::<Vec<_>>();
+
+    let snapshot = Snapshot::InteractiveCortexM {
+        snapshot_schema_version: "1.0".to_string(),
+        status: if matches!(
+            inputs.stop_reason,
+            StopReason::MemoryViolation | StopReason::DecodeError
+        ) {
+            "error".to_string()
+        } else {
+            "ok".to_string()
+        },
+        steps_executed: inputs.steps_executed,
+        cycles: metrics.get_cycles(),
+        instructions: metrics.get_instructions(),
+        stop_reason: inputs.stop_reason,
+        message: inputs.message,
+        firmware_hash,
+        cpu: snapshot_cortexm_cpu(&machine.cpu),
+        peripherals,
+        config: InteractiveSnapshotConfig {
+            firmware: inputs.firmware_path.to_path_buf(),
+            system: inputs.system_path.cloned(),
+            max_steps: inputs.max_steps,
+        },
+    };
+
+    match std::fs::File::create(path) {
+        Ok(f) => {
+            if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                error!("Failed to write snapshot {:?}: {}", path, e);
+            }
+        }
+        Err(e) => error!("Failed to create snapshot {:?}: {}", path, e),
+    }
+}
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -165,7 +352,8 @@ fn run_interactive(cli: Cli) -> ExitCode {
         return ExitCode::from(EXIT_CONFIG_ERROR);
     };
 
-    let bus = match build_bus(cli.system) {
+    let system_path = cli.system.clone();
+    let bus = match build_bus(system_path.clone()) {
         Ok(bus) => bus,
         Err(e) => {
             tracing::error!("{:#}", e);
@@ -200,11 +388,32 @@ fn run_interactive(cli: Cli) -> ExitCode {
         machine.cpu.pc, machine.cpu.sp
     );
 
+    let mut stop_reason = StopReason::MaxSteps;
+    let mut steps_executed: u64 = 0;
+    let mut stop_message: Option<String> = None;
+
+    // Check if GDB server is requested
+    if let Some(port) = cli.gdb {
+        let server = labwired_gdbstub::GdbServer::new(port);
+        if let Err(e) = server.run(machine) {
+            error!("GDB server failed: {}", e);
+            return ExitCode::from(EXIT_RUNTIME_ERROR);
+        }
+        return ExitCode::from(EXIT_PASS);
+    }
+
     // Run for specified number of steps
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
+        if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.pc) {
+            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.pc, step);
+            stop_reason = StopReason::Halt;
+            steps_executed = step as u64;
+            break;
+        }
         match machine.step() {
             Ok(_) => {
+                steps_executed = (step + 1) as u64;
                 // Periodically report IPS if not in trace mode
                 if !cli.trace && step > 0 && step % 10000 == 0 {
                     info!(
@@ -216,9 +425,32 @@ fn run_interactive(cli: Cli) -> ExitCode {
             }
             Err(e) => {
                 info!("Simulation Error at step {}: {}", step, e);
+                stop_reason = match e {
+                    labwired_core::SimulationError::MemoryViolation(_) => {
+                        StopReason::MemoryViolation
+                    }
+                    labwired_core::SimulationError::DecodeError(_) => StopReason::DecodeError,
+                };
+                stop_message = Some(e.to_string());
                 break;
             }
         }
+    }
+
+    if let Some(path) = &cli.snapshot {
+        write_interactive_snapshot(
+            path,
+            &metrics,
+            &machine,
+            InteractiveSnapshotInputs {
+                firmware_path: &firmware,
+                system_path: system_path.as_ref(),
+                max_steps: cli.max_steps,
+                steps_executed,
+                stop_reason: stop_reason.clone(),
+                message: stop_message,
+            },
+        );
     }
 
     info!("Simulation loop finished (demo).");
@@ -497,6 +729,7 @@ fn run_test(args: TestArgs) -> ExitCode {
             vec![],
             &firmware_bytes,
             &uart_tx,
+            &machine.cpu,
             &firmware_path,
             system_path.as_ref(),
             std::time::Duration::from_secs(0),
@@ -512,6 +745,11 @@ fn run_test(args: TestArgs) -> ExitCode {
     let mut stuck_counter: u64 = 0;
 
     for step in 0..max_steps {
+        if !args.breakpoint.is_empty() && args.breakpoint.contains(&machine.cpu.pc) {
+            stop_reason = StopReason::Halt;
+            steps_executed = step;
+            break;
+        }
         if let Some(wall_time_ms) = script_wall_time_ms {
             if start.elapsed().as_millis() >= wall_time_ms as u128 {
                 stop_reason = StopReason::WallTime;
@@ -635,6 +873,7 @@ fn run_test(args: TestArgs) -> ExitCode {
         assertion_results,
         &firmware_bytes,
         &uart_tx,
+        &machine.cpu,
         &firmware_path,
         system_path.as_ref(),
         duration,
@@ -661,6 +900,7 @@ fn write_outputs(
     assertions: Vec<AssertionResult>,
     firmware_bytes: &[u8],
     uart_tx: &Arc<Mutex<Vec<u8>>>,
+    cpu: &labwired_core::cpu::CortexM,
     firmware_path: &Path,
     system_path: Option<&PathBuf>,
     duration: std::time::Duration,
@@ -702,6 +942,41 @@ fn write_outputs(
                     }
                 }
                 Err(e) => error!("Failed to create result.json: {}", e),
+            }
+
+            // snapshot.json
+            let snapshot_path = output_dir.join("snapshot.json");
+            let snapshot = Snapshot::CortexM {
+                cpu: CortexMCpuSnapshot {
+                    registers: [
+                        cpu.r0, cpu.r1, cpu.r2, cpu.r3, cpu.r4, cpu.r5, cpu.r6, cpu.r7, cpu.r8,
+                        cpu.r9, cpu.r10, cpu.r11, cpu.r12, cpu.sp, cpu.lr, cpu.pc,
+                    ],
+                    xpsr: cpu.xpsr,
+                    pending_exceptions: cpu.pending_exceptions,
+                    primask: cpu.primask,
+                    vtor: cpu.vtor.load(Ordering::Relaxed),
+                },
+                steps_executed,
+                cycles: result.cycles,
+                instructions: result.instructions,
+                stop_reason: result.stop_reason.clone(),
+                stop_reason_details: result.stop_reason_details.clone(),
+                limits: result.limits.clone(),
+                firmware_hash: result.firmware_hash.clone(),
+                config: TestConfig {
+                    firmware: result.config.firmware.clone(),
+                    system: result.config.system.clone(),
+                    script: result.config.script.clone(),
+                },
+            };
+            match std::fs::File::create(&snapshot_path) {
+                Ok(f) => {
+                    if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                        error!("Failed to write snapshot.json: {}", e);
+                    }
+                }
+                Err(e) => error!("Failed to create snapshot.json: {}", e),
             }
 
             // uart.log
@@ -803,7 +1078,7 @@ fn write_config_error_outputs(
         stop_reason,
         stop_reason_details: stop_reason_details.clone(),
         limits: resolved_limits.clone(),
-        message: Some(message),
+        message: Some(message.clone()),
         assertions: vec![],
         firmware_hash,
         config: TestConfig {
@@ -825,6 +1100,26 @@ fn write_config_error_outputs(
                     }
                 }
                 Err(e) => error!("Failed to create result.json: {}", e),
+            }
+
+            let snapshot_path = output_dir.join("snapshot.json");
+            let snapshot = Snapshot::ConfigError {
+                message: message.clone(),
+                stop_reason_details: result.stop_reason_details.clone(),
+                limits: result.limits.clone(),
+                config: TestConfig {
+                    firmware: result.config.firmware.clone(),
+                    system: result.config.system.clone(),
+                    script: result.config.script.clone(),
+                },
+            };
+            match std::fs::File::create(&snapshot_path) {
+                Ok(f) => {
+                    if let Err(e) = serde_json::to_writer_pretty(f, &snapshot) {
+                        error!("Failed to write snapshot.json: {}", e);
+                    }
+                }
+                Err(e) => error!("Failed to create snapshot.json: {}", e),
             }
 
             let uart_path = output_dir.join("uart.log");
