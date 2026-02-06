@@ -1,6 +1,7 @@
 pub mod adc;
 pub mod gpio;
 pub mod i2c;
+pub mod i2c_temp_sensor;
 pub mod nvic;
 pub mod rcc;
 pub mod scb;
