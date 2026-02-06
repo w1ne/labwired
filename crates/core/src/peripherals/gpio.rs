@@ -1,7 +1,7 @@
 use crate::SimResult;
 
 /// STM32F1-compatible GPIO peripheral
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct GpioPort {
     crl: u32,  // 0x00: configuration register low
     crh: u32,  // 0x04: configuration register high
@@ -123,5 +123,9 @@ impl crate::Peripheral for GpioPort {
 
         self.write_reg(reg_offset, reg_val);
         Ok(())
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }

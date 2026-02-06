@@ -2,7 +2,7 @@ use crate::SimResult;
 
 /// Mocked SysTick Timer peripheral
 /// Standard address: 0xE000_E010
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct Systick {
     csr: u32,
     rvr: u32,
@@ -69,18 +69,31 @@ impl crate::Peripheral for Systick {
         Ok(())
     }
 
-    fn tick(&mut self) -> bool {
+    fn tick(&mut self) -> crate::PeripheralTickResult {
         if (self.csr & 0x1) == 0 {
-            return false;
+            return crate::PeripheralTickResult {
+                irq: false,
+                cycles: 0,
+            };
         }
 
         if self.cvr == 0 {
             self.cvr = self.rvr;
             self.csr |= 0x10000;
-            (self.csr & 0x2) != 0
+            crate::PeripheralTickResult {
+                irq: (self.csr & 0x2) != 0,
+                cycles: 1,
+            }
         } else {
             self.cvr -= 1;
-            false
+            crate::PeripheralTickResult {
+                irq: false,
+                cycles: 1,
+            }
         }
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }

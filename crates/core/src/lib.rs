@@ -7,6 +7,7 @@ pub mod metrics;
 pub mod multi_core;
 pub mod peripherals;
 pub mod signals;
+pub mod snapshot;
 
 use std::any::Any;
 use std::sync::atomic::AtomicU32;
@@ -24,12 +25,19 @@ pub enum SimulationError {
 
 pub type SimResult<T> = Result<T, SimulationError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeripheralTickResult {
+    pub irq: bool,
+    pub cycles: u32,
+}
+
 /// Trait for observing simulation events in a modular way.
 pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
     fn on_simulation_start(&self) {}
     fn on_simulation_stop(&self) {}
     fn on_step_start(&self, _pc: u32, _opcode: u16) {}
     fn on_step_end(&self, _cycles: u32) {}
+    fn on_peripheral_tick(&self, _name: &str, _cycles: u32) {}
 }
 
 /// Trait representing a CPU architecture
@@ -47,20 +55,31 @@ pub trait Cpu {
     fn get_vtor(&self) -> u32;
     fn set_vtor(&mut self, val: u32);
     fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>);
+
+    // Debug Access
+    fn get_register(&self, id: u8) -> u32;
+    fn set_register(&mut self, id: u8, val: u32);
+    fn snapshot(&self) -> snapshot::CpuSnapshot;
 }
 
 /// Trait representing a memory-mapped peripheral
 pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
-    fn tick(&mut self) -> bool {
-        false
+    fn tick(&mut self) -> PeripheralTickResult {
+        PeripheralTickResult {
+            irq: false,
+            cycles: 0,
+        }
     }
     fn as_any(&self) -> Option<&dyn Any> {
         None
     }
     fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
         None
+    }
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::Value::Null
     }
 }
 
@@ -100,10 +119,42 @@ pub trait Bus {
     }
 }
 
+use std::collections::HashSet;
+
+/// Trait for controlling the machine in debug mode
+pub trait DebugControl {
+    fn add_breakpoint(&mut self, addr: u32);
+    fn remove_breakpoint(&mut self, addr: u32);
+    fn clear_breakpoints(&mut self);
+
+    /// Run until breakpoint or steps limit
+    fn run(&mut self, max_steps: Option<u32>) -> SimResult<StopReason>;
+
+    /// Step a single instruction
+    fn step_single(&mut self) -> SimResult<StopReason>;
+
+    fn read_core_reg(&self, id: u8) -> u32;
+    fn write_core_reg(&mut self, id: u8, val: u32);
+
+    fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>>;
+    fn write_memory(&mut self, addr: u32, data: &[u8]) -> SimResult<()>;
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StopReason {
+    Breakpoint(u32),
+    StepDone,
+    MaxStepsReached,
+    ManualStop,
+}
+
 pub struct Machine<C: Cpu> {
     pub cpu: C,
     pub bus: bus::SystemBus,
     pub observers: Vec<Arc<dyn SimulationObserver>>,
+
+    // Debug state
+    pub breakpoints: HashSet<u32>,
 }
 
 impl<C: Cpu + Default> Machine<C> {
@@ -170,6 +221,7 @@ impl<C: Cpu + Default> Machine<C> {
             cpu,
             bus,
             observers: Vec::new(),
+            breakpoints: HashSet::new(),
         }
     }
 }
@@ -227,12 +279,101 @@ impl<C: Cpu> Machine<C> {
         let res = self.cpu.step(&mut self.bus, &self.observers);
 
         // Propagate peripherals
-        let interrupts = self.bus.tick_peripherals();
+        let (interrupts, costs) = self.bus.tick_peripherals_with_costs();
+        for c in costs {
+            if let Some(p) = self.bus.peripherals.get(c.index) {
+                for observer in &self.observers {
+                    observer.on_peripheral_tick(&p.name, c.cycles);
+                }
+            }
+        }
         for irq in interrupts {
             self.cpu.set_exception_pending(irq);
             tracing::debug!("Exception {} Pend", irq);
         }
 
         res
+    }
+
+    pub fn snapshot(&self) -> snapshot::MachineSnapshot {
+        snapshot::MachineSnapshot {
+            cpu: self.cpu.snapshot(),
+            peripherals: self
+                .bus
+                .peripherals
+                .iter()
+                .map(|p| (p.name.clone(), p.dev.snapshot()))
+                .collect(),
+        }
+    }
+}
+
+impl<C: Cpu> DebugControl for Machine<C> {
+    fn add_breakpoint(&mut self, addr: u32) {
+        self.breakpoints.insert(addr);
+    }
+
+    fn remove_breakpoint(&mut self, addr: u32) {
+        self.breakpoints.remove(&addr);
+    }
+
+    fn clear_breakpoints(&mut self) {
+        self.breakpoints.clear();
+    }
+
+    fn run(&mut self, max_steps: Option<u32>) -> SimResult<StopReason> {
+        let mut steps = 0;
+        loop {
+            // Check breakpoints BEFORE stepping
+            let pc = self.cpu.get_pc();
+            // Note: breakpoints typically match the exact PC.
+            // Thumb instructions are at even addresses, usually.
+            // If the user sets a BP at an odd address (Thumb function pointer), we should mask it?
+            // Usually DAP clients send the symbol address.
+            // Let's assume exact match for now, but mask LSB.
+            let pc_aligned = pc & !1;
+
+            if self.breakpoints.contains(&pc_aligned) {
+                return Ok(StopReason::Breakpoint(pc));
+            }
+
+            self.step()?;
+            steps += 1;
+
+            if let Some(max) = max_steps {
+                if steps >= max {
+                    return Ok(StopReason::MaxStepsReached);
+                }
+            }
+        }
+    }
+
+    fn step_single(&mut self) -> SimResult<StopReason> {
+        self.step()?;
+        Ok(StopReason::StepDone)
+    }
+
+    fn read_core_reg(&self, id: u8) -> u32 {
+        self.cpu.get_register(id)
+    }
+
+    fn write_core_reg(&mut self, id: u8, val: u32) {
+        self.cpu.set_register(id, val);
+    }
+
+    fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>> {
+        let mut data = Vec::with_capacity(len);
+        for i in 0..len {
+            let byte = self.bus.read_u8((addr as u64) + (i as u64))?;
+            data.push(byte);
+        }
+        Ok(data)
+    }
+
+    fn write_memory(&mut self, addr: u32, data: &[u8]) -> SimResult<()> {
+        for (i, byte) in data.iter().enumerate() {
+            self.bus.write_u8((addr as u64) + (i as u64), *byte)?;
+        }
+        Ok(())
     }
 }

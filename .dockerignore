@@ -1,4 +1,30 @@
+# Build artifacts
 target/
+**/*.rs.bk
+
+# Version control
 .git/
 .github/
-**/*.rs.bk
+
+# Documentation (not needed for build)
+docs/
+*.md
+!README.md
+
+# Test artifacts
+tests/
+examples/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
