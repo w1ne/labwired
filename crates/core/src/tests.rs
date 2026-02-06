@@ -1004,4 +1004,109 @@ mod tests {
         assert_eq!(metrics.get_peripheral_cycles("systick"), 1);
         assert_eq!(metrics.get_cycles(), 2); // 1 (MOV) + 1 (SysTick tick)
     }
+
+    #[test]
+    fn test_bit_field_instructions() {
+        let mut machine: Machine<CortexM> = Machine::new();
+
+        // Test UBFX (Unsigned Bit Field Extract)
+        // Extract bits [7:4] from 0xABCD1234
+        // UBFX R1, R0, #4, #4
+        // Encoding: h1 = 0xF3C0 (1111 0011 1100 0000)
+        // h2 = 0imm3 Rd imm2 widthm1
+        // lsb = 4 = (imm3<<2)|imm2 = (1<<2)|0 = 4
+        // widthm1 = 3 (width-1)
+        // h2 = 0001 0001 0000 0011 = 0x1103
+        machine.cpu.r0 = 0xABCD1234;
+        machine.cpu.pc = 0x0;
+        machine.bus.write_u16(0x0, 0xF3C0).unwrap();
+        machine.bus.write_u16(0x2, 0x1103).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r1, 0x3); // Bits [7:4] = 0x3
+
+        // Test SBFX (Signed Bit Field Extract)
+        // Extract bits [7:4] from 0xFFFFFFF0 (negative)
+        // SBFX R2, R0, #4, #4
+        // lsb=4: imm3=1, imm2=0 -> (1<<2)|0 = 4
+        // widthm1=3 (width-1)
+        // h1 = 0xF340, h2 = 0x1203
+        machine.cpu.r0 = 0xFFFFFFF0;
+        machine.cpu.pc = 0x4;
+        machine.bus.write_u16(0x4, 0xF340).unwrap();
+        machine.bus.write_u16(0x6, 0x1203).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r2, 0xFFFFFFFF); // Sign-extended 0xF
+
+        // Test BFC (Bit Field Clear)
+        // Clear bits [7:4] in R3
+        // BFC R3, #4, #4
+        // lsb=4: imm3=1, imm2=0
+        // msb=7 (lsb+width-1)
+        // h1 = 0xF36F (Rn=0xF for BFC), h2 = 0x1307
+        machine.cpu.r3 = 0xFFFFFFFF;
+        machine.cpu.pc = 0x8;
+        machine.bus.write_u16(0x8, 0xF36F).unwrap();
+        machine.bus.write_u16(0xA, 0x1307).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r3, 0xFFFFFF0F); // Bits [7:4] cleared
+
+        // Test BFI (Bit Field Insert)
+        // Insert bits [3:0] of R0 into bits [7:4] of R4
+        // BFI R4, R0, #4, #4
+        // lsb=4: imm3=1, imm2=0
+        // msb=7
+        // h1 = 0xF360 (Rn=0), h2 = 0x1407
+        machine.cpu.r0 = 0x0000000A;
+        machine.cpu.r4 = 0xFFFFFF0F;
+        machine.cpu.pc = 0xC;
+        machine.bus.write_u16(0xC, 0xF360).unwrap();
+        machine.bus.write_u16(0xE, 0x1407).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r4, 0xFFFFFFAF); // Inserted 0xA into bits [7:4]
+    }
+
+    #[test]
+    fn test_misc_thumb2_instructions() {
+        let mut machine: Machine<CortexM> = Machine::new();
+
+        // Test CLZ (Count Leading Zeros)
+        // CLZ R1, R0
+        // h1 = 0xFAB0, h2 = 0xF180
+        machine.cpu.r0 = 0x00000100; // 23 leading zeros
+        machine.cpu.pc = 0x0;
+        machine.bus.write_u16(0x0, 0xFAB0).unwrap();
+        machine.bus.write_u16(0x2, 0xF180).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r1, 23);
+
+        // Test RBIT (Reverse Bits)
+        // RBIT R2, R0
+        // h1 = 0xFA90, h2 = 0xF2A0
+        machine.cpu.r0 = 0x12345678;
+        machine.cpu.pc = 0x4;
+        machine.bus.write_u16(0x4, 0xFA90).unwrap();
+        machine.bus.write_u16(0x6, 0xF2A0).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r2, 0x1E6A2C48); // Bit-reversed
+
+        // Test REV (Byte-Reverse Word)
+        // REV R3, R0
+        // h1 = 0xFA90, h2 = 0xF380
+        machine.cpu.r0 = 0x12345678;
+        machine.cpu.pc = 0x8;
+        machine.bus.write_u16(0x8, 0xFA90).unwrap();
+        machine.bus.write_u16(0xA, 0xF380).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r3, 0x78563412); // Byte-reversed
+
+        // Test REV16 (Byte-Reverse Packed Halfword)
+        // REV16 R4, R0
+        // h1 = 0xFA90, h2 = 0xF490
+        machine.cpu.r0 = 0x12345678;
+        machine.cpu.pc = 0xC;
+        machine.bus.write_u16(0xC, 0xFA90).unwrap();
+        machine.bus.write_u16(0xE, 0xF490).unwrap();
+        machine.step().unwrap();
+        assert_eq!(machine.cpu.r4, 0x34127856); // Halfwords byte-reversed
+    }
 }

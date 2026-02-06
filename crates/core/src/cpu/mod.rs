@@ -788,6 +788,130 @@ impl Cpu for CortexM {
 
                         self.write_reg(rd, result);
                         pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xF360 && (h2 & 0x8000) == 0 && (h1 & 0xF) == 0xF {
+                        // BFC (Bit Field Clear) T1 encoding
+                        // Pattern: 1111 0011 0110 1111 0xxx xxxx xxxx xxxx
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm2 = (h2 >> 6) & 0x3;
+                        let msb = h2 & 0x1F;
+
+                        let lsb = ((imm3 << 2) | imm2) as u8;
+                        let width = (msb - (lsb as u16) + 1) as u8;
+
+                        let dst = self.read_reg(rd);
+                        let mask = ((1u32 << width) - 1) << lsb;
+                        let result = dst & !mask;
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xF360 && (h2 & 0x8000) == 0 {
+                        // BFI (Bit Field Insert) T1 encoding
+                        // Pattern: 1111 0011 0110 xxxx 0xxx xxxx xxxx xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm2 = (h2 >> 6) & 0x3;
+                        let msb = h2 & 0x1F;
+
+                        let lsb = ((imm3 << 2) | imm2) as u8;
+                        let width = (msb - (lsb as u16) + 1) as u8;
+
+                        let src = self.read_reg(rn);
+                        let dst = self.read_reg(rd);
+                        let mask = ((1u32 << width) - 1) << lsb;
+                        let result = (dst & !mask) | ((src << lsb) & mask);
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xF340 && (h2 & 0x8000) == 0 {
+                        // SBFX (Signed Bit Field Extract) T1 encoding
+                        // Pattern: 1111 0011 0100 xxxx 0xxx xxxx xxxx xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm2 = (h2 >> 6) & 0x3;
+                        let widthm1 = h2 & 0x1F;
+
+                        let lsb = ((imm3 << 2) | imm2) as u8;
+                        let width = (widthm1 + 1) as u8;
+
+                        let src = self.read_reg(rn);
+                        let extracted = (src >> lsb) & ((1 << width) - 1);
+
+                        // Sign extend
+                        let sign_bit = 1 << (width - 1);
+                        let result = if (extracted & sign_bit) != 0 {
+                            extracted | (!0 << width)
+                        } else {
+                            extracted
+                        };
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xF3C0 && (h2 & 0x8000) == 0 {
+                        // UBFX (Unsigned Bit Field Extract) T1 encoding
+                        // Pattern: 1111 0011 1100 xxxx 0xxx xxxx xxxx xxxx
+                        let rn = (h1 & 0xF) as u8;
+                        let imm3 = (h2 >> 12) & 0x7;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+                        let imm2 = (h2 >> 6) & 0x3;
+                        let widthm1 = h2 & 0x1F;
+
+                        let lsb = ((imm3 << 2) | imm2) as u8;
+                        let width = (widthm1 + 1) as u8;
+
+                        let src = self.read_reg(rn);
+                        let result = (src >> lsb) & ((1 << width) - 1);
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFAB0 && (h2 & 0xF0F0) == 0xF080 {
+                        // CLZ (Count Leading Zeros) T1 encoding
+                        // Pattern: 1111 1010 1011 xxxx 1111 xxxx 1000 xxxx
+                        let rm = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+
+                        let value = self.read_reg(rm);
+                        let result = value.leading_zeros();
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFA90 && (h2 & 0xF0F0) == 0xF0A0 {
+                        // RBIT (Reverse Bits) T1 encoding
+                        // Pattern: 1111 1010 1001 xxxx 1111 xxxx 1010 xxxx
+                        let rm = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+
+                        let value = self.read_reg(rm);
+                        let result = value.reverse_bits();
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFA90 && (h2 & 0xF0F0) == 0xF080 {
+                        // REV (Byte-Reverse Word) T2 encoding
+                        // Pattern: 1111 1010 1001 xxxx 1111 xxxx 1000 xxxx
+                        let rm = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+
+                        let value = self.read_reg(rm);
+                        let result = value.swap_bytes();
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
+                    } else if (h1 & 0xFFF0) == 0xFA90 && (h2 & 0xF0F0) == 0xF090 {
+                        // REV16 (Byte-Reverse Packed Halfword) T2 encoding
+                        // Pattern: 1111 1010 1001 xxxx 1111 xxxx 1001 xxxx
+                        let rm = (h1 & 0xF) as u8;
+                        let rd = ((h2 >> 8) & 0xF) as u8;
+
+                        let value = self.read_reg(rm);
+                        let low = ((value & 0xFF) << 8) | ((value >> 8) & 0xFF);
+                        let high = ((value & 0xFF0000) << 8) | ((value >> 8) & 0xFF0000);
+                        let result = high | low;
+
+                        self.write_reg(rd, result);
+                        pc_increment = 4;
                     } else {
                         // Enhanced unknown instruction diagnostics
                         let pattern_hint = match h1 & 0xF800 {
@@ -813,6 +937,16 @@ impl Cpu for CortexM {
             }
             Instruction::Movw { .. } | Instruction::Movt { .. } => {
                 unreachable!("32-bit instructions should be handled in Prefix32 path");
+            }
+            Instruction::Bfi { .. }
+            | Instruction::Bfc { .. }
+            | Instruction::Sbfx { .. }
+            | Instruction::Ubfx { .. }
+            | Instruction::Clz { .. }
+            | Instruction::Rbit { .. }
+            | Instruction::Rev { .. }
+            | Instruction::Rev16 { .. } => {
+                unreachable!("32-bit Thumb-2 instructions should be handled in Prefix32 path");
             }
 
             Instruction::Unknown(op) => {
