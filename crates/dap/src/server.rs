@@ -45,6 +45,12 @@ fn command_name(cmd: &Command) -> &'static str {
     }
 }
 
+impl Default for DapServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DapServer {
     pub fn new() -> Self {
         Self {
@@ -125,11 +131,10 @@ impl DapServer {
                 Command::ConfigurationDone => Some(ResponseBody::ConfigurationDone),
                 Command::SetBreakpoints(args) => {
                     let path = args.source.path.clone().unwrap_or_default();
-                    let lines = args
+                    let lines: Vec<i64> = args
                         .breakpoints
                         .as_ref()
                         .map(|bp| bp.iter().map(|b| b.line).collect())
-                        .or_else(|| args.lines.clone())
                         .unwrap_or_default();
 
                     if let Err(e) = self.adapter.set_breakpoints(path, lines.clone()) {
