@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-02-06
+
+### Added
+- **Advanced ISA Support**:
+    - **Bit Field Instructions**: Implemented `BFI`, `BFC`, `SBFX`, `UBFX` with full decoder/executor support.
+    - **Misc Thumb-2 Instructions**: Added `CLZ`, `RBIT`, `REV`, `REV16` for professional firmware compatibility.
+- **Peripheral Ecosystem**:
+    - **ADC (Analog-to-Digital Converter)**: Modular implementation with conversion timing, interrupts, and EOC status flags.
+    - **TMP102 Sensor Mock**: Concrete I2C temperature sensor peripheral for integration testing.
+- **Observability & Debugging**:
+    - **State Snapshots**: Full system state serialization to JSON for deterministic analysis.
+    - **Modular Metrics**: Per-peripheral cycle accounting and real-time IPS reporting.
+    - **GDB Remote Serial Protocol**: New `labwired-gdbstub` crate allowing connection from standard GDB clients.
+    - **Interactive Debugging (DAP)**: `labwired-dap` server for VS Code integration with variable and register inspection.
+- **Documentation**:
+    - [Peripheral Development Guide](file:///home/andrii/Projects/labwired/docs/peripheral_development.md).
+    - [Getting Started with Real Firmware](file:///home/andrii/Projects/labwired/docs/getting_started_firmware.md) onboarding guide.
+
 ## [0.9.0] - 2026-02-04
 
 ### Added

@@ -10,3 +10,6 @@ labwired-core = { path = "../core" }
 anyhow = { workspace = true }
 goblin = { workspace = true }
 tracing = { workspace = true }
+addr2line = "0.21"
+gimli = "0.28"
+object = "0.32"

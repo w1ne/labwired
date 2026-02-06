@@ -57,6 +57,7 @@ Notes:
   - `--max-cycles` overrides `limits.max_cycles`
   - `--max-uart-bytes` overrides `limits.max_uart_bytes`
   - `--detect-stuck` (alias: `--no-progress`) overrides `limits.no_progress_steps`
+- `--breakpoint <addr>` (repeatable) stops the run when PC matches and sets `stop_reason: halt`.
 
 ### Deprecated Legacy Schema (v1)
 
@@ -109,6 +110,7 @@ labwired test --script test.yaml --output-dir out/artifacts
 
 Artifacts:
 - `out/artifacts/result.json`: machine-readable summary
+- `out/artifacts/snapshot.json`: machine-readable snapshot of CPU state (or config error details)
 - `out/artifacts/uart.log`: captured UART TX bytes
 - `out/artifacts/junit.xml`: JUnit XML report (one testcase for `run` + one per assertion)
 

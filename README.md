@@ -9,7 +9,7 @@ LabWired is a next-generation simulation platform designed to bridge the gap bet
 - **Declarative Configuration**: Define Chips and Boards in YAML (including memory maps and peripherals).
 - **System Services**: Full support for SysTick, Vector Table Boot, and Exception Handling.
 - **Core Peripheral Ecosystem**: STM32F1-compatible GPIO, RCC, Timers, I2C, and SPI models.
-- **Advanced Debugging**: Instruction-level execution tracing and simulation step control.
+- **Interactive Debugging**: Standard DAP support with DWARF-based source mapping for VS Code.
 - **CI Test Runner**: Deterministic `labwired test` mode with YAML scripts, JSON/JUnit outputs, and artifact bundles.
 - **Functional Stubbing**: Mock external sensors and devices without complex emulation.
 - **High Performance**: Native Rust implementation (`labwired-core`).
@@ -20,8 +20,10 @@ The project is organized as a Rust Workspace:
 
 - **`crates/cli`**: The command-line interface entry point.
 - **`crates/config`**: YAML-based hardware and project descriptors.
-- **`crates/loader`**: ELF binary parsing and image generation.
+- **`crates/loader`**: ELF binary parsing and symbol resolution.
 - **`crates/core`**: The execution engine (CPU, Dynamic Bus, Peripherals).
+- **`crates/dap`**: Debug Adapter Protocol (DAP) server.
+- **`editors/vscode`**: LabWired VS Code extension.
 
 See [Architecture Documentation](docs/architecture.md) for details.
 
@@ -92,6 +94,51 @@ cargo build --release -p labwired-cli
 
 See `docs/ci_test_runner.md` for schema, exit codes, and artifact formats.
 
+## 🔄 CI Integration
+
+LabWired integrates seamlessly into your CI/CD pipeline, replacing physical hardware with deterministic simulation.
+
+### Quick Start
+
+**GitHub Actions:**
+```yaml
+- uses: w1ne/labwired/.github/actions/labwired-test@main
+  with:
+    script: tests/firmware-test.yaml
+    output_dir: test-results
+```
+
+**GitLab CI:**
+```yaml
+test:
+  script:
+    - labwired test --script tests/firmware-test.yaml --output-dir results
+  artifacts:
+    reports:
+      junit: results/junit.xml
+```
+
+**Docker (when published):**
+```bash
+docker run --rm -v $PWD:/workspace ghcr.io/w1ne/labwired:latest \
+  test --script tests/firmware-test.yaml
+```
+
+### Resources
+
+- **[CI Integration Guide](docs/ci_integration.md)** - Complete setup instructions
+- **[Workflow Templates](examples/workflows/)** - Ready-to-use GitHub Actions & GitLab CI templates
+- **[Test Examples](examples/ci/)** - Sample test scripts
+
+### Benefits
+
+- ✅ No physical hardware required in CI
+- ✅ Deterministic, reproducible results
+- ✅ Parallel testing across multiple targets
+- ✅ Fast feedback (no flashing delays)
+- ✅ Fault injection testing support
+
+
 ## 🤝 Development Workflow
 We follow **Gitflow** and enforce strict quality gates.
 
@@ -109,6 +156,9 @@ See [Release & Merging Strategy](docs/release_strategy.md) for the full protocol
 - [Implementation Plan](docs/plan.md)
 - [Architecture](docs/architecture.md)
 - [Release Strategy](docs/release_strategy.md)
+- [CI Integration Guide](docs/ci_integration.md)
+- [Interactive Debugging](docs/debugging.md)
+
 
 ## ⚖️ License
 MIT

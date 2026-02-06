@@ -6,13 +6,13 @@ members = [
     "crates/cli", 
     "crates/firmware",
     "crates/firmware-ci-fixture",
-    "crates/config",
+    "crates/config", "crates/dap", "crates/gdbstub",
 ]
 exclude = ["crates/firmware-hal-test"]
 default-members = ["crates/cli", "crates/core", "crates/loader"]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 authors = ["LabWired Team"]
 license = "MIT"
