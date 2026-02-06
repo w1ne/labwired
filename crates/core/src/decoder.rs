@@ -68,6 +68,18 @@ pub enum Instruction {
     LdrReg { rt: u8, rn: u8, rm: u8 }, // LDR Rt, [Rn, Rm]
     Rsbs { rd: u8, rn: u8 },           // RSBS Rd, Rn, #0
 
+    // Bit Field Instructions (Thumb-2)
+    Bfi { rd: u8, rn: u8, lsb: u8, width: u8 }, // BFI Rd, Rn, #lsb, #width
+    Bfc { rd: u8, lsb: u8, width: u8 },         // BFC Rd, #lsb, #width
+    Sbfx { rd: u8, rn: u8, lsb: u8, width: u8 }, // SBFX Rd, Rn, #lsb, #width
+    Ubfx { rd: u8, rn: u8, lsb: u8, width: u8 }, // UBFX Rd, Rn, #lsb, #width
+
+    // Misc Thumb-2 Instructions
+    Clz { rd: u8, rm: u8 },   // CLZ Rd, Rm
+    Rbit { rd: u8, rm: u8 },  // RBIT Rd, Rm
+    Rev { rd: u8, rm: u8 },   // REV Rd, Rm
+    Rev16 { rd: u8, rm: u8 }, // REV16 Rd, Rm
+
     Unknown(u16),
     // Intermediate state for 32-bit instruction (First half)
     Prefix32(u16),
