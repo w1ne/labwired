@@ -181,6 +181,14 @@ impl Cpu for CortexM {
         self.vtor = vtor;
     }
 
+    fn get_register(&self, id: u8) -> u32 {
+        self.read_reg(id)
+    }
+
+    fn set_register(&mut self, id: u8, val: u32) {
+        self.write_reg(id, val);
+    }
+
     fn step(
         &mut self,
         bus: &mut dyn Bus,
