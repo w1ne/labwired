@@ -1,13 +1,13 @@
+use core::convert::Infallible;
 use gdbstub::common::Signal;
-use gdbstub::stub::{GdbStub, BaseStopReason};
+use gdbstub::stub::{BaseStopReason, GdbStub};
 use gdbstub::target::ext::base::singlethread::{
     SingleThreadBase, SingleThreadResume, SingleThreadSingleStep,
 };
 use gdbstub::target::ext::base::BaseOps;
-use gdbstub::target::{Target, TargetResult, TargetError};
-use labwired_core::{DebugControl, Machine, StopReason};
+use gdbstub::target::{Target, TargetError, TargetResult};
 use labwired_core::cpu::CortexM;
-use core::convert::Infallible;
+use labwired_core::{DebugControl, Machine, StopReason};
 use std::net::{TcpListener, TcpStream};
 
 pub struct LabwiredTarget {
@@ -28,7 +28,9 @@ impl Target for LabwiredTarget {
         BaseOps::SingleThread(self)
     }
 
-    fn support_breakpoints(&mut self) -> Option<gdbstub::target::ext::breakpoints::BreakpointsOps<'_, Self>> {
+    fn support_breakpoints(
+        &mut self,
+    ) -> Option<gdbstub::target::ext::breakpoints::BreakpointsOps<'_, Self>> {
         Some(self)
     }
 }
@@ -62,27 +64,26 @@ impl SingleThreadBase for LabwiredTarget {
         Ok(())
     }
 
-    fn read_addrs(
-        &mut self,
-        start_addr: u32,
-        data: &mut [u8],
-    ) -> TargetResult<usize, Self> {
-        let mem = self.machine.read_memory(start_addr, data.len()).map_err(|_| TargetError::NonFatal)?;
+    fn read_addrs(&mut self, start_addr: u32, data: &mut [u8]) -> TargetResult<usize, Self> {
+        let mem = self
+            .machine
+            .read_memory(start_addr, data.len())
+            .map_err(|_| TargetError::NonFatal)?;
         let len = mem.len().min(data.len());
         data[..len].copy_from_slice(&mem[..len]);
         Ok(len)
     }
 
-    fn write_addrs(
-        &mut self,
-        start_addr: u32,
-        data: &[u8],
-    ) -> TargetResult<(), Self> {
-        self.machine.write_memory(start_addr, data).map_err(|_| TargetError::NonFatal)?;
+    fn write_addrs(&mut self, start_addr: u32, data: &[u8]) -> TargetResult<(), Self> {
+        self.machine
+            .write_memory(start_addr, data)
+            .map_err(|_| TargetError::NonFatal)?;
         Ok(())
     }
 
-    fn support_resume(&mut self) -> Option<gdbstub::target::ext::base::singlethread::SingleThreadResumeOps<'_, Self>> {
+    fn support_resume(
+        &mut self,
+    ) -> Option<gdbstub::target::ext::base::singlethread::SingleThreadResumeOps<'_, Self>> {
         Some(self)
     }
 }
@@ -92,7 +93,9 @@ impl SingleThreadResume for LabwiredTarget {
         Ok(())
     }
 
-    fn support_single_step(&mut self) -> Option<gdbstub::target::ext::base::singlethread::SingleThreadSingleStepOps<'_, Self>> {
+    fn support_single_step(
+        &mut self,
+    ) -> Option<gdbstub::target::ext::base::singlethread::SingleThreadSingleStepOps<'_, Self>> {
         Some(self)
     }
 }
@@ -104,18 +107,28 @@ impl SingleThreadSingleStep for LabwiredTarget {
 }
 
 impl gdbstub::target::ext::breakpoints::Breakpoints for LabwiredTarget {
-    fn support_sw_breakpoint(&mut self) -> Option<gdbstub::target::ext::breakpoints::SwBreakpointOps<'_, Self>> {
+    fn support_sw_breakpoint(
+        &mut self,
+    ) -> Option<gdbstub::target::ext::breakpoints::SwBreakpointOps<'_, Self>> {
         Some(self)
     }
 }
 
 impl gdbstub::target::ext::breakpoints::SwBreakpoint for LabwiredTarget {
-    fn add_sw_breakpoint(&mut self, addr: u32, _kind: gdbstub_arch::arm::ArmBreakpointKind) -> TargetResult<bool, Self> {
+    fn add_sw_breakpoint(
+        &mut self,
+        addr: u32,
+        _kind: gdbstub_arch::arm::ArmBreakpointKind,
+    ) -> TargetResult<bool, Self> {
         self.machine.add_breakpoint(addr);
         Ok(true)
     }
 
-    fn remove_sw_breakpoint(&mut self, addr: u32, _kind: gdbstub_arch::arm::ArmBreakpointKind) -> TargetResult<bool, Self> {
+    fn remove_sw_breakpoint(
+        &mut self,
+        addr: u32,
+        _kind: gdbstub_arch::arm::ArmBreakpointKind,
+    ) -> TargetResult<bool, Self> {
         self.machine.remove_breakpoint(addr);
         Ok(true)
     }
@@ -139,7 +152,7 @@ impl GdbServer {
 
         let mut target = LabwiredTarget::new(machine);
         let gdb = GdbStub::new(stream);
-        
+
         match gdb.run_blocking::<GdbEventLoop>(&mut target) {
             Ok(reason) => tracing::info!("GDB session ended: {:?}", reason),
             Err(e) => tracing::error!("GDB session error: {:?}", e),
@@ -166,8 +179,8 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbEventLoop {
             <Self::Connection as gdbstub::conn::Connection>::Error,
         >,
     > {
-        use std::io::Read;
         use gdbstub::stub::run_blocking::Event;
+        use std::io::Read;
 
         // Non-blocking peep at connection for interrupt
         let mut byte = [0];
@@ -184,8 +197,12 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbEventLoop {
 
         // Run machine for a bit
         match target.machine.run(Some(1000)) {
-            Ok(StopReason::Breakpoint(_)) => Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGTRAP))),
-            Ok(StopReason::StepDone) => Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGTRAP))),
+            Ok(StopReason::Breakpoint(_)) => Ok(Event::TargetStopped(BaseStopReason::Signal(
+                Signal::SIGTRAP,
+            ))),
+            Ok(StopReason::StepDone) => Ok(Event::TargetStopped(BaseStopReason::Signal(
+                Signal::SIGTRAP,
+            ))),
             _ => {
                 // Keep running
                 Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGINT)))
@@ -211,33 +228,37 @@ mod tests {
         let bus = SystemBus::new();
         let machine = Machine::<CortexM>::with_bus(bus);
         let mut target = LabwiredTarget::new(machine);
-        
+
         // Mock some register values
         target.machine.write_core_reg(0, 0x12345678);
         target.machine.write_core_reg(15, 0x08000100);
-        
+
         let mut regs = gdbstub_arch::arm::reg::ArmCoreRegs::default();
-        target.read_registers(&mut regs).unwrap_or_else(|_| panic!("Failed to read registers"));
-        
+        target
+            .read_registers(&mut regs)
+            .unwrap_or_else(|_| panic!("Failed to read registers"));
+
         assert_eq!(regs.r[0], 0x12345678);
         assert_eq!(regs.pc, 0x08000100);
-        
+
         // Test write
         regs.r[1] = 0xdeadbeef;
-        target.write_registers(&regs).unwrap_or_else(|_| panic!("Failed to write registers"));
+        target
+            .write_registers(&regs)
+            .unwrap_or_else(|_| panic!("Failed to write registers"));
         assert_eq!(target.machine.read_core_reg(1), 0xdeadbeef);
     }
 
     #[test]
     fn test_target_memory_access() {
         let mut bus = SystemBus::new();
-        // Just mock some RAM. add_peripheral is not directly on SystemBus, 
+        // Just mock some RAM. add_peripheral is not directly on SystemBus,
         // usually it's built from config or manually added to the bus internal vector.
         // Actually SystemBus might have a way to add peripherals in tests.
-        
+
         let machine = Machine::<CortexM>::with_bus(bus);
         let mut target = LabwiredTarget::new(machine);
-        
+
         // We can use the read_memory write_memory logic.
         // But without any peripherals, it might return SimulationError.
         // Let's assume we can at least test the trait call.

@@ -54,7 +54,7 @@ pub trait Cpu {
     fn get_vtor(&self) -> u32;
     fn set_vtor(&mut self, val: u32);
     fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>);
-    
+
     // Debug Access
     fn get_register(&self, id: u8) -> u32;
     fn set_register(&mut self, id: u8, val: u32);
@@ -114,7 +114,6 @@ pub trait Bus {
     }
 }
 
-
 use std::collections::HashSet;
 
 /// Trait for controlling the machine in debug mode
@@ -122,16 +121,16 @@ pub trait DebugControl {
     fn add_breakpoint(&mut self, addr: u32);
     fn remove_breakpoint(&mut self, addr: u32);
     fn clear_breakpoints(&mut self);
-    
+
     /// Run until breakpoint or steps limit
     fn run(&mut self, max_steps: Option<u32>) -> SimResult<StopReason>;
-    
+
     /// Step a single instruction
     fn step_single(&mut self) -> SimResult<StopReason>;
-    
+
     fn read_core_reg(&self, id: u8) -> u32;
     fn write_core_reg(&mut self, id: u8, val: u32);
-    
+
     fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>>;
     fn write_memory(&mut self, addr: u32, data: &[u8]) -> SimResult<()>;
 }
@@ -148,7 +147,7 @@ pub struct Machine<C: Cpu> {
     pub cpu: C,
     pub bus: bus::SystemBus,
     pub observers: Vec<Arc<dyn SimulationObserver>>,
-    
+
     // Debug state
     pub breakpoints: HashSet<u32>,
 }
@@ -316,14 +315,14 @@ impl<C: Cpu> DebugControl for Machine<C> {
             // Usually DAP clients send the symbol address.
             // Let's assume exact match for now, but mask LSB.
             let pc_aligned = pc & !1;
-            
+
             if self.breakpoints.contains(&pc_aligned) {
-                 return Ok(StopReason::Breakpoint(pc));
+                return Ok(StopReason::Breakpoint(pc));
             }
-            
+
             self.step()?;
             steps += 1;
-            
+
             if let Some(max) = max_steps {
                 if steps >= max {
                     return Ok(StopReason::MaxStepsReached);

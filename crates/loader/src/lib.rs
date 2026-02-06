@@ -4,9 +4,9 @@ use goblin::elf::Elf;
 use labwired_core::memory::ProgramImage;
 use std::fs;
 use std::path::Path;
-use tracing::{debug, info, warn};
-use std::sync::Arc;
 use std::rc::Rc;
+use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 pub fn load_elf(path: &Path) -> Result<ProgramImage> {
     let buffer = fs::read(path).with_context(|| format!("Failed to read ELF file: {:?}", path))?;
@@ -58,37 +58,45 @@ pub struct SourceLocation {
 pub struct SymbolProvider {
     #[allow(dead_code)]
     data: Arc<Vec<u8>>,
-    context: addr2line::Context<addr2line::gimli::EndianReader<addr2line::gimli::RunTimeEndian, Rc<[u8]>>>,
+    context: addr2line::Context<
+        addr2line::gimli::EndianReader<addr2line::gimli::RunTimeEndian, Rc<[u8]>>,
+    >,
     // Map of (file_name, line) -> address
     line_map: std::collections::HashMap<(String, u32), u64>,
 }
 
 impl SymbolProvider {
     pub fn new(path: &Path) -> Result<Self> {
-        use object::Object;
         use gimli::Reader;
-        let data = fs::read(path).with_context(|| format!("Failed to read ELF for symbols: {:?}", path))?;
+        use object::Object;
+        let data = fs::read(path)
+            .with_context(|| format!("Failed to read ELF for symbols: {:?}", path))?;
         let data = Arc::new(data);
-        
+
         let slice: &'static [u8] = unsafe { std::mem::transmute(&data[..]) };
-        
+
         let object = object::File::parse(slice).context("Failed to parse ELF for symbols")?;
-        let context = addr2line::Context::new(&object).context("Failed to create addr2line context")?;
-        
+        let context =
+            addr2line::Context::new(&object).context("Failed to create addr2line context")?;
+
         let mut line_map = std::collections::HashMap::new();
-        
+
         // Build line map using gimli for reverse lookup
-        let load_section = |id: gimli::SectionId| -> std::result::Result<addr2line::gimli::EndianReader<gimli::RunTimeEndian, Rc<[u8]>>, gimli::Error> {
+        let load_section = |id: gimli::SectionId| -> std::result::Result<
+            addr2line::gimli::EndianReader<gimli::RunTimeEndian, Rc<[u8]>>,
+            gimli::Error,
+        > {
             use object::ObjectSection;
-            let data = object.section_by_name(id.name())
+            let data = object
+                .section_by_name(id.name())
                 .and_then(|s| s.uncompressed_data().ok())
                 .map(|d| Rc::from(&d[..]))
                 .unwrap_or_else(|| Rc::from(&[][..]));
             Ok(gimli::EndianReader::new(data, gimli::RunTimeEndian::Little))
         };
-        
+
         let dwarf = gimli::Dwarf::load(&load_section).context("Failed to load DWARF")?;
-        
+
         let mut iter = dwarf.units();
         while let Ok(Some(header)) = iter.next() {
             let unit = dwarf.unit(header).ok();
@@ -96,18 +104,24 @@ impl SymbolProvider {
                 if let Some(ref line_program) = unit.line_program {
                     let mut rows = line_program.clone().rows();
                     while let Ok(Some((_, row))) = rows.next_row() {
-                        if row.end_sequence() { continue; }
+                        if row.end_sequence() {
+                            continue;
+                        }
                         let file_idx = row.file_index();
                         if let Some(file) = line_program.header().file(file_idx) {
-                            let file_name = dwarf.attr_string(&unit, file.path_name()).ok()
+                            let file_name = dwarf
+                                .attr_string(&unit, file.path_name())
+                                .ok()
                                 .and_then(|s| {
                                     let s2 = s.to_string_lossy().ok()?;
                                     Some(s2.into_owned())
                                 });
-                            
+
                             if let (Some(f), Some(line)) = (file_name, row.line()) {
                                 // Store the first address seen for this file:line
-                                line_map.entry((f, line.get() as u32)).or_insert(row.address());
+                                line_map
+                                    .entry((f, line.get() as u32))
+                                    .or_insert(row.address());
                             }
                         }
                     }
@@ -127,16 +141,20 @@ impl SymbolProvider {
             addr2line::LookupResult::Output(Ok(frames)) => frames,
             _ => return None,
         };
-        
+
         if let Ok(Some(frame)) = frames.next() {
-            let file = frame.location.as_ref()
+            let file = frame
+                .location
+                .as_ref()
                 .and_then(|l| l.file)
                 .map(|f: &str| f.to_string());
             let line = frame.location.as_ref().and_then(|l| l.line);
-            let function = frame.function.as_ref()
+            let function = frame
+                .function
+                .as_ref()
                 .and_then(|f| f.demangle().ok())
                 .map(|s: std::borrow::Cow<str>| s.into_owned());
-            
+
             if let Some(f) = file {
                 return Some(SourceLocation {
                     file: f,
@@ -153,10 +171,10 @@ impl SymbolProvider {
         if let Some(addr) = self.line_map.get(&(file_path.to_string(), line)) {
             return Some(*addr);
         }
-        
+
         // Try base name match if full path doesn't match
         let requested_file = std::path::Path::new(file_path).file_name()?.to_str()?;
-        
+
         for ((f, l), addr) in &self.line_map {
             if *l == line {
                 let current_file = std::path::Path::new(f).file_name()?.to_str()?;
@@ -165,7 +183,7 @@ impl SymbolProvider {
                 }
             }
         }
-        
+
         None
     }
 }
@@ -183,17 +201,19 @@ mod tests {
         }
 
         let provider = SymbolProvider::new(&elf_path).expect("Failed to create SymbolProvider");
-        
+
         // Try to resolve a location in main.rs
         // Note: Line 11 is 'let a: u32 = 100;'
         let pc = provider.location_to_pc("main.rs", 11);
         assert!(pc.is_some(), "Should resolve main.rs:11 to a PC");
-        
+
         let addr = pc.unwrap();
         assert!(addr > 0, "Resolved address should be valid");
-        
+
         // Reverse lookup
-        let loc = provider.lookup(addr).expect("Lookup failed for resolved PC");
+        let loc = provider
+            .lookup(addr)
+            .expect("Lookup failed for resolved PC");
         assert!(loc.file.ends_with("main.rs"));
         assert_eq!(loc.line, Some(11));
     }

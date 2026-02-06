@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
+use labwired_core::{cpu::CortexM, DebugControl, Machine, StopReason};
+use labwired_loader::SymbolProvider;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use anyhow::{Result, anyhow};
-use labwired_core::{Machine, DebugControl, StopReason, cpu::CortexM};
-use labwired_loader::SymbolProvider;
 
 pub struct LabwiredAdapter {
     pub machine: Arc<Mutex<Option<Machine<CortexM>>>>,
@@ -20,19 +20,21 @@ impl LabwiredAdapter {
     pub fn load_firmware(&self, path: PathBuf) -> Result<()> {
         // labwired-loader load_elf takes &Path
         let image = labwired_loader::load_elf(&path)?;
-        
+
         let mut machine = Machine::<CortexM>::new();
-        machine.load_firmware(&image).map_err(|e| anyhow!("Failed to load firmware: {:?}", e))?;
-        
+        machine
+            .load_firmware(&image)
+            .map_err(|e| anyhow!("Failed to load firmware: {:?}", e))?;
+
         *self.machine.lock().unwrap() = Some(machine);
-        
+
         // Load symbols
         if let Ok(syms) = SymbolProvider::new(&path) {
             *self.symbols.lock().unwrap() = Some(syms);
         } else {
             tracing::warn!("No debug symbols found or failed to parse: {:?}", path);
         }
-        
+
         Ok(())
     }
 
@@ -61,7 +63,9 @@ impl LabwiredAdapter {
     pub fn step(&self) -> Result<StopReason> {
         let mut guard = self.machine.lock().unwrap();
         if let Some(machine) = guard.as_mut() {
-            let reason = machine.step_single().map_err(|e| anyhow!("Step failed: {:?}", e))?;
+            let reason = machine
+                .step_single()
+                .map_err(|e| anyhow!("Step failed: {:?}", e))?;
             Ok(reason)
         } else {
             Err(anyhow!("Machine not initialized"))
@@ -76,7 +80,9 @@ impl LabwiredAdapter {
             // But DAP requests (pause) need to acquire lock.
             // Simplified: Run 1000 steps, check if we should stop?
             // Or just run(). usage of `run(None)` runs forever until breakpoint.
-            let reason = machine.run(Some(100_000)).map_err(|e| anyhow!("Run failed: {:?}", e))?;
+            let reason = machine
+                .run(Some(100_000))
+                .map_err(|e| anyhow!("Run failed: {:?}", e))?;
             Ok(reason)
         } else {
             Err(anyhow!("Machine not initialized"))
@@ -85,7 +91,7 @@ impl LabwiredAdapter {
 
     pub fn set_breakpoints(&self, path: String, lines: Vec<i64>) -> Result<()> {
         let mut addresses = Vec::new();
-        
+
         let syms_guard = self.symbols.lock().unwrap();
         if let Some(syms) = syms_guard.as_ref() {
             for line in lines {
@@ -96,7 +102,7 @@ impl LabwiredAdapter {
                 }
             }
         }
-        
+
         let mut machine_guard = self.machine.lock().unwrap();
         if let Some(machine) = machine_guard.as_mut() {
             machine.clear_breakpoints();
@@ -105,14 +111,16 @@ impl LabwiredAdapter {
                 tracing::info!("Breakpoint set at {:#x}", addr);
             }
         }
-        
+
         Ok(())
     }
 
     pub fn read_memory(&self, addr: u64, len: usize) -> Result<Vec<u8>> {
         let machine_guard = self.machine.lock().unwrap();
         if let Some(machine) = machine_guard.as_ref() {
-            machine.read_memory(addr as u32, len).map_err(|e| anyhow!("Memory read failed: {:?}", e))
+            machine
+                .read_memory(addr as u32, len)
+                .map_err(|e| anyhow!("Memory read failed: {:?}", e))
         } else {
             Err(anyhow!("Machine not initialized"))
         }
@@ -127,22 +135,32 @@ mod tests {
     #[test]
     fn test_adapter_breakpoints() {
         let elf_path = PathBuf::from("../../target/thumbv7m-none-eabi/debug/firmware");
-        if !elf_path.exists() { return; }
+        if !elf_path.exists() {
+            return;
+        }
 
         let adapter = LabwiredAdapter::new();
-        adapter.load_firmware(elf_path).expect("Failed to load firmware");
+        adapter
+            .load_firmware(elf_path)
+            .expect("Failed to load firmware");
 
         // Set breakpoint at main.rs:11
-        adapter.set_breakpoints("main.rs".to_string(), vec![11]).expect("Failed to set breakpoints");
+        adapter
+            .set_breakpoints("main.rs".to_string(), vec![11])
+            .expect("Failed to set breakpoints");
     }
 
     #[test]
     fn test_adapter_read_memory() {
         let elf_path = PathBuf::from("../../target/thumbv7m-none-eabi/debug/firmware");
-        if !elf_path.exists() { return; }
+        if !elf_path.exists() {
+            return;
+        }
 
         let adapter = LabwiredAdapter::new();
-        adapter.load_firmware(elf_path).expect("Failed to load firmware");
+        adapter
+            .load_firmware(elf_path)
+            .expect("Failed to load firmware");
 
         // Read first few bytes of Flash (Vector Table)
         let data = adapter.read_memory(0x0, 4).expect("Failed to read memory");
