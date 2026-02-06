@@ -80,6 +80,7 @@ impl crate::Peripheral for Systick {
             return crate::PeripheralTickResult {
                 irq: false,
                 cycles: 0,
+                ..Default::default()
             };
         }
 
@@ -89,12 +90,14 @@ impl crate::Peripheral for Systick {
             crate::PeripheralTickResult {
                 irq: (self.csr & 0x2) != 0,
                 cycles: 1,
+                ..Default::default()
             }
         } else {
             self.cvr -= 1;
             crate::PeripheralTickResult {
                 irq: false,
                 cycles: 1,
+                ..Default::default()
             }
         }
     }

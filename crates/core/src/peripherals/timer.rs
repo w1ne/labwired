@@ -80,6 +80,7 @@ impl crate::Peripheral for Timer {
             return crate::PeripheralTickResult {
                 irq: false,
                 cycles: 0,
+                ..Default::default()
             };
         }
 
@@ -96,6 +97,7 @@ impl crate::Peripheral for Timer {
                 return crate::PeripheralTickResult {
                     irq: (self.dier & 1) != 0,
                     cycles: 1,
+                    ..Default::default()
                 };
             }
         }
@@ -103,6 +105,7 @@ impl crate::Peripheral for Timer {
         crate::PeripheralTickResult {
             irq: false,
             cycles: 1,
+            ..Default::default()
         }
     }
 

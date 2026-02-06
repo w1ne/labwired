@@ -13,19 +13,39 @@ use panic_halt as _;
 
 #[entry]
 fn main() -> ! {
-    // Test division operations
+    // 1. Test division operations
     let a: u32 = 100;
     let b: u32 = 5;
-    let c: u32 = a / b; // Should trigger UDIV instruction
+    let c: u32 = a / b;
 
-    let d: i32 = -100;
-    let e: i32 = 5;
-    let f: i32 = d / e; // Should trigger SDIV instruction
+    // 2. Mock DMA configuration (Memory-to-Memory)
+    let dma1_base = 0x4002_0000;
+    let ch1_ccr = dma1_base + 0x08;
+    let ch1_cndtr = dma1_base + 0x0C;
+    let ch1_cpar = dma1_base + 0x10;
+    let ch1_cmar = dma1_base + 0x14;
 
-    // Use the results to prevent optimization
+    unsafe {
+        core::ptr::write_volatile(ch1_cpar as *mut u32, 0x2000_1000); // Src
+        core::ptr::write_volatile(ch1_cmar as *mut u32, 0x2000_2000); // Dst
+        core::ptr::write_volatile(ch1_cndtr as *mut u32, 8); // 8 bytes
+        // Enable DMA: MEM2MEM=1, MINC=1, PINC=1, EN=1
+        core::ptr::write_volatile(ch1_ccr as *mut u32, (1 << 14) | (1 << 7) | (1 << 6) | (1 << 0));
+    }
+
+    // 3. Mock EXTI configuration
+    let exti_base = 0x4001_0400;
+    let exti_imr = exti_base + 0x00;
+    let exti_swier = exti_base + 0x10;
+
+    unsafe {
+        core::ptr::write_volatile(exti_imr as *mut u32, 1 << 0); // Unmask Line 0
+        core::ptr::write_volatile(exti_swier as *mut u32, 1 << 0); // Trigger software interrupt
+    }
+
+    // Use results to prevent optimization
     unsafe {
         core::ptr::write_volatile(0x2000_0000 as *mut u32, c);
-        core::ptr::write_volatile(0x2000_0004 as *mut i32, f);
     }
 
     loop {}

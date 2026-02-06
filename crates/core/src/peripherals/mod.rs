@@ -5,6 +5,9 @@
 // See the LICENSE file in the project root for full license information.
 
 pub mod adc;
+pub mod afio;
+pub mod dma;
+pub mod exti;
 pub mod gpio;
 pub mod i2c;
 pub mod i2c_temp_sensor;
