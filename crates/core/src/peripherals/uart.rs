@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 
 /// Simple UART mock.
 /// Writes to Data Register (offset 0x0) correspond to stdout writes.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct Uart {
+    #[serde(skip)]
     sink: Option<Arc<Mutex<Vec<u8>>>>,
     echo_stdout: bool,
 }
@@ -55,5 +56,9 @@ impl crate::Peripheral for Uart {
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }

@@ -88,29 +88,14 @@ impl Peripheral for Nvic {
         if offset < 0x20 {
             // ISER: Writing 1 sets the enable bit
             self.state.iser[reg_idx].fetch_or(mask, Ordering::SeqCst);
-            tracing::info!(
-                "NVIC: ISER[{}] set to {:#x}",
-                reg_idx,
-                self.state.iser[reg_idx].load(Ordering::SeqCst)
-            );
         } else if (0x80..0xA0).contains(&offset) {
             // ICER: Writing 1 clears the enable bit
             let real_idx = reg_idx - 0x80 / 4;
             self.state.iser[real_idx].fetch_and(!mask, Ordering::SeqCst);
-            tracing::info!(
-                "NVIC: ISER[{}] cleared to {:#x}",
-                real_idx,
-                self.state.iser[real_idx].load(Ordering::SeqCst)
-            );
         } else if (0x100..0x120).contains(&offset) {
             // ISPR: Writing 1 sets the pending bit
             let real_idx = reg_idx - 0x100 / 4;
             self.state.ispr[real_idx].fetch_or(mask, Ordering::SeqCst);
-            tracing::info!(
-                "NVIC: ISPR[{}] set to {:#x}",
-                real_idx,
-                self.state.ispr[real_idx].load(Ordering::SeqCst)
-            );
         } else if (0x180..0x1A0).contains(&offset) {
             // ICPR: Writing 1 clears the pending bit
             let real_idx = reg_idx - 0x180 / 4;
@@ -118,5 +103,24 @@ impl Peripheral for Nvic {
         }
 
         Ok(())
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        let iser: Vec<u32> = self
+            .state
+            .iser
+            .iter()
+            .map(|a| a.load(Ordering::Relaxed))
+            .collect();
+        let ispr: Vec<u32> = self
+            .state
+            .ispr
+            .iter()
+            .map(|a| a.load(Ordering::Relaxed))
+            .collect();
+        serde_json::json!({
+            "iser": iser,
+            "ispr": ispr,
+        })
     }
 }

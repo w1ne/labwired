@@ -2,7 +2,7 @@ use crate::SimResult;
 use std::collections::HashMap;
 
 /// A simple stub peripheral that returns fixed values on read.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct StubPeripheral {
     pub values: HashMap<u64, u32>, // mapping offset to value
     pub default_val: u32,
@@ -33,5 +33,9 @@ impl crate::Peripheral for StubPeripheral {
     fn write(&mut self, _offset: u64, _value: u8) -> SimResult<()> {
         // Ignores writes for now
         Ok(())
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }

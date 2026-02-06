@@ -1,7 +1,7 @@
 use crate::SimResult;
 
 /// Basic STM32 General Purpose Timer (TIM2-TIM5 compatible)
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct Timer {
     cr1: u32,
     dier: u32,
@@ -98,5 +98,9 @@ impl crate::Peripheral for Timer {
             irq: false,
             cycles: 1,
         }
+    }
+
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or(serde_json::Value::Null)
     }
 }
