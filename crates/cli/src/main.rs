@@ -62,6 +62,10 @@ struct Cli {
     #[arg(long, default_value = "20000")]
     max_steps: usize,
 
+    /// Start a GDB server on the specified port
+    #[arg(long)]
+    gdb: Option<u16>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -385,8 +389,17 @@ fn run_interactive(cli: Cli) -> ExitCode {
     );
 
     let mut stop_reason = StopReason::MaxSteps;
-    let mut stop_message: Option<String> = None;
     let mut steps_executed: u64 = 0;
+
+    // Check if GDB server is requested
+    if let Some(port) = cli.gdb {
+        let server = labwired_gdbstub::GdbServer::new(port);
+        if let Err(e) = server.run(machine) {
+            error!("GDB server failed: {}", e);
+            return ExitCode::from(EXIT_RUNTIME_ERROR);
+        }
+        return ExitCode::from(EXIT_PASS);
+    }
 
     // Run for specified number of steps
     info!("Running for {} steps...", cli.max_steps);

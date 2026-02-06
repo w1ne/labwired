@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-02-06
+
+### Added
+- **GDB Remote Serial Protocol Support**:
+    - **New Crate (`labwired-gdbstub`)**: Implemented GDB RSP server using `gdbstub` crate.
+    - **CLI integration**: Added `--gdb <PORT>` flag to launch the GDB server.
+    - **Debugging Features**: Support for software breakpoints, register inspection, and memory access via standard GDB clients.
+
 ## [0.10.0] - 2026-02-05
 
 ### Added

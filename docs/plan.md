@@ -273,9 +273,9 @@ This section translates the business research roadmap (“The Strategic Horizon 
 - [x] DAP Server Core (Initialize, Launch, Disconnect)
 - [x] Machine Debug Control (Breakpoints, stepping)
 - [x] VS Code Extension for LabWired
-- [/] Register & Variable inspection (In progress)
+- [x] Register & Variable inspection (Completed)
 
-## Iteration 13: GDB Support (Remote Serial Protocol)
+## Iteration 13: GDB Support (Remote Serial Protocol) (In Progress)
 **Objective**: Allow GDB to connect to the simulation for command-line debugging and integration with other IDEs.
 
 - [ ] Implement GDB RSP server using `gdbstub`.

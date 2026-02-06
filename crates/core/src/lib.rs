@@ -133,6 +133,7 @@ pub trait DebugControl {
     fn write_core_reg(&mut self, id: u8, val: u32);
     
     fn read_memory(&self, addr: u32, len: usize) -> SimResult<Vec<u8>>;
+    fn write_memory(&mut self, addr: u32, data: &[u8]) -> SimResult<()>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -351,5 +352,12 @@ impl<C: Cpu> DebugControl for Machine<C> {
             data.push(byte);
         }
         Ok(data)
+    }
+
+    fn write_memory(&mut self, addr: u32, data: &[u8]) -> SimResult<()> {
+        for (i, byte) in data.iter().enumerate() {
+            self.bus.write_u8((addr as u64) + (i as u64), *byte)?;
+        }
+        Ok(())
     }
 }
