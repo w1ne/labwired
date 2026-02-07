@@ -26,3 +26,15 @@ peripherals:
     base_address: 0x40004400
     size: "1KB"
     irq: 38
+  - id: "afio"
+    type: "afio"
+    base_address: 0x40010000
+    size: "1KB"
+  - id: "exti"
+    type: "exti"
+    base_address: 0x40010400
+    size: "1KB"
+  - id: "dma1"
+    type: "dma"
+    base_address: 0x40020000
+    size: "1KB"

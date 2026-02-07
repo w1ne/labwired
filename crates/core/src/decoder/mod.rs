@@ -4,8 +4,8 @@
 // This software is released under the MIT License.
 // See the LICENSE file in the project root for full license information.
 
-pub mod cortex_m;
+pub mod arm;
 pub mod riscv;
 
-pub use cortex_m::CortexM;
-pub use riscv::RiscV;
+pub use arm::decode_thumb_16;
+pub use arm::Instruction as ArmInstruction;

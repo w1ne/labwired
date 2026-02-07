@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Refactored
+- **Multi-Architecture Support**:
+    - **Modular CPU**: Decoupled `CortexM` from the generic `Cpu` trait, moving implementation to a dedicated module.
+    - **Generic Bus**: Removed architecture-specific interrupt logic from `SystemBus`, enabling cleaner support for future architectures like RISC-V.
+    - **Interrupt Dispatch**: Implemented `explicit_irqs` in `PeripheralTickResult`, allowing peripherals to trigger specific interrupts directly.
+
+### Added
+- **RISC-V Support**:
+    - **Architecture**: Initial support for RISC-V (RV32I) Base Integer Instruction Set.
+    - **Decoder**: Full RV32I instruction decoding including branches, loads, stores, and arithmetic.
+    - **CPU Model**: `RiscV` struct implementing the generic `Cpu` trait with 32 general-purpose registers (x0-x31).
+
 ## [0.10.0] - 2026-02-06
 
 ### Added

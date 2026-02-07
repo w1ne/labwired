@@ -54,7 +54,7 @@ Peripherals are integrated via the `Peripheral` trait:
 pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
-    fn tick(&mut self) -> bool; // Returns true if interrupt is pending
+    fn tick(&mut self) -> PeripheralTickResult; // Returns IRQ status, cycles, and DMA requests
 }
 ```
 
@@ -101,6 +101,14 @@ The system includes a suite of memory-mapped peripherals to support real-world H
 - **SysTick**: Standard Cortex-M system timer.
 - **NVIC**: Nested Vectored Interrupt Controller with prioritization and masking.
 - **SCB**: System Control Block with VTOR support.
+- **DMA1**: 7-channel Direct Memory Access controller with bus mastering support.
+- **EXTI**: External Interrupt/Event Controller for handling external signals.
+- **AFIO**: Alternate Function I/O for dynamic pin-to-interrupt mapping.
+
+### DMA Mastering (Two-Phase Execution)
+To maintain modularity and comply with Rust's ownership rules, LabWired uses a two-phase execution model for DMA:
+1.  **Phase 1 (Request)**: During `tick()`, a peripheral returns a list of `DmaRequest`s.
+2.  **Phase 2 (Execute)**: The `SystemBus` iterates over these requests and performs the corresponding memory operations.
 
 #### **32-bit Reassembly**
 The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`, `MOV.W`, `MVN.W`, `SDIV`, `UDIV`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.

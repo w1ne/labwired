@@ -7,7 +7,7 @@
 use crate::memory::LinearMemory;
 use crate::peripherals::nvic::NvicState;
 use crate::peripherals::uart::Uart;
-use crate::{Bus, Peripheral, PeripheralTickResult, SimResult, SimulationError};
+use crate::{Bus, DmaRequest, Peripheral, SimResult, SimulationError};
 use labwired_config::{parse_size, ChipDescriptor, SystemManifest};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -47,6 +47,27 @@ impl SystemBus {
             flash: LinearMemory::new(1024 * 1024, 0x0),
             ram: LinearMemory::new(1024 * 1024, 0x2000_0000),
             peripherals: vec![
+                PeripheralEntry {
+                    name: "dma1".to_string(),
+                    base: 0x4002_0000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::dma::Dma1::new()),
+                },
+                PeripheralEntry {
+                    name: "afio".to_string(),
+                    base: 0x4001_0000,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::afio::Afio::new()),
+                },
+                PeripheralEntry {
+                    name: "exti".to_string(),
+                    base: 0x4001_0400,
+                    size: 0x400,
+                    irq: None,
+                    dev: Box::new(crate::peripherals::exti::Exti::new()),
+                },
                 PeripheralEntry {
                     name: "systick".to_string(),
                     base: 0xE000_E010,
@@ -171,6 +192,9 @@ impl SystemBus {
                 "timer" => Box::new(crate::peripherals::timer::Timer::new()),
                 "i2c" => Box::new(crate::peripherals::i2c::I2c::new()),
                 "spi" => Box::new(crate::peripherals::spi::Spi::new()),
+                "exti" => Box::new(crate::peripherals::exti::Exti::new()),
+                "afio" => Box::new(crate::peripherals::afio::Afio::new()),
+                "dma" => Box::new(crate::peripherals::dma::Dma1::new()),
                 other => {
                     tracing::warn!(
                         "Unsupported peripheral type '{}' for id '{}'; skipping",
@@ -219,6 +243,22 @@ impl SystemBus {
         Ok(bus)
     }
 
+    pub fn signal_nvic_irq(&self, irq: u32) {
+        if let Some(nvic) = &self.nvic {
+            if irq >= 16 {
+                let idx = ((irq - 16) / 32) as usize;
+                let bit = (irq - 16) % 32;
+                if idx < 8 {
+                    nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                }
+            } else {
+                // Core exceptions are handled differently if needed, 
+                // but signal_nvic_irq is mostly for external IRQs.
+                tracing::warn!("signal_nvic_irq called for core exception {}", irq);
+            }
+        }
+    }
+
     pub fn read_u32(&self, addr: u64) -> SimResult<u32> {
         let b0 = self.read_u8(addr)? as u32;
         let b1 = self.read_u8(addr + 1)? as u32;
@@ -247,21 +287,27 @@ impl SystemBus {
         Ok(())
     }
 
-    pub fn tick_peripherals_with_costs(&mut self) -> (Vec<u32>, Vec<PeripheralTickCost>) {
+    pub fn tick_peripherals_with_costs(&mut self) -> (Vec<u32>, Vec<PeripheralTickCost>, Vec<DmaRequest>) {
         let mut interrupts = Vec::new();
         let mut costs = Vec::new();
+        let mut dma_requests = Vec::new();
 
-        // 1. Collect IRQs from peripherals and pend them in NVIC
+        // 1. Collect IRQs and DMA requests from peripherals and pend them in NVIC
         for (peripheral_index, p) in self.peripherals.iter_mut().enumerate() {
-            let PeripheralTickResult { irq, cycles } = p.dev.tick();
-            if cycles > 0 {
+            let res = p.dev.tick();
+            if res.cycles > 0 {
                 costs.push(PeripheralTickCost {
                     index: peripheral_index,
-                    cycles,
+                    cycles: res.cycles,
                 });
             }
 
-            if irq {
+            // Collect DMA requests
+            if !res.dma_requests.is_empty() {
+                dma_requests.extend(res.dma_requests);
+            }
+
+            if res.irq {
                 if let Some(irq) = p.irq {
                     if irq >= 16 {
                         if let Some(nvic) = &self.nvic {
@@ -280,6 +326,22 @@ impl SystemBus {
                     }
                 }
             }
+
+            for irq in res.explicit_irqs {
+                if let Some(nvic) = &self.nvic {
+                    if irq >= 16 {
+                        let idx = ((irq - 16) / 32) as usize;
+                        let bit = (irq - 16) % 32;
+                        if idx < 8 {
+                            nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                        }
+                    } else {
+                        interrupts.push(irq);
+                    }
+                } else {
+                    interrupts.push(irq);
+                }
+            }
         }
 
         // 2. Scan NVIC for all Pending & Enabled interrupts
@@ -292,6 +354,103 @@ impl SystemBus {
                         if (mask & (1 << bit)) != 0 {
                             let irq = 16 + (idx as u32 * 32) + bit;
                             tracing::info!("Bus: NVIC Signaling Pending IRQ {}", irq);
+                            interrupts.push(irq);
+                        }
+                    }
+                }
+            }
+        }
+
+        (interrupts, costs, dma_requests)
+    }
+
+    pub fn tick_peripherals_fully(&mut self) -> (Vec<u32>, Vec<PeripheralTickCost>) {
+        let mut pending_dma = Vec::new();
+        let mut interrupts = Vec::new();
+        let mut costs = Vec::new();
+
+        // Use a temporary swap or just loop indexed to avoid borrow overlap if needed,
+        // but for now let's use the two-phase approach.
+
+        // Phase 1: Tick peripherals and collect IRQs/DMA
+        for (peripheral_index, p) in self.peripherals.iter_mut().enumerate() {
+            let res = p.dev.tick();
+            if res.cycles > 0 {
+                costs.push(PeripheralTickCost {
+                    index: peripheral_index,
+                    cycles: res.cycles,
+                });
+            }
+            if !res.dma_requests.is_empty() {
+                pending_dma.extend(res.dma_requests);
+            }
+
+            if res.irq {
+                if let Some(irq) = p.irq {
+                    if irq >= 16 {
+                        if let Some(nvic) = &self.nvic {
+                            let idx = ((irq - 16) / 32) as usize;
+                            let bit = (irq - 16) % 32;
+                            if idx < 8 {
+                                nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                            }
+                        } else {
+                            interrupts.push(irq);
+                        }
+                    } else {
+                        interrupts.push(irq);
+                    }
+                }
+            }
+
+            for irq in res.explicit_irqs {
+                if let Some(nvic) = &self.nvic {
+                    if irq >= 16 {
+                        let idx = ((irq - 16) / 32) as usize;
+                        let bit = (irq - 16) % 32;
+                        if idx < 8 {
+                            nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
+                        }
+                    } else {
+                        interrupts.push(irq);
+                    }
+                } else {
+                    interrupts.push(irq);
+                }
+            }
+        }
+
+        // Phase 2: Execute DMA requests (this now has access to self.flash/ram via write_u8)
+        for req in pending_dma {
+            match req.direction {
+                crate::DmaDirection::Read => {
+                    // DMA Read from source
+                    if let Ok(val) = self.read_u8(req.addr) {
+                        // In a real DMA transfer, this value would be written somewhere else.
+                        // For a generic DmaRequest, we might need a way to pass the value back to the peripheral.
+                        // Let's refine DmaRequest later if needed.
+                        tracing::trace!("DMA Read: {:#x} -> {:#x}", req.addr, val);
+                    }
+                }
+                crate::DmaDirection::Write => {
+                    // DMA Write to destination
+                    let _ = self.write_u8(req.addr, req.val);
+                    tracing::trace!("DMA Write: {:#x} <- {:#x}", req.addr, req.val);
+                }
+            }
+        }
+
+        // Phase 2.5: EXTI Logic Removed - moved to Exti peripheral via explicit_irqs.
+
+        // Phase 3: Scan NVIC
+        if let Some(nvic) = &self.nvic {
+            for idx in 0..8 {
+                let mask =
+                    nvic.iser[idx].load(Ordering::SeqCst) & nvic.ispr[idx].load(Ordering::SeqCst);
+                if mask != 0 {
+                    for bit in 0..32 {
+                        if (mask & (1 << bit)) != 0 {
+                            let irq = 16 + (idx as u32 * 32) + bit;
                             interrupts.push(irq);
                         }
                     }
@@ -341,7 +500,30 @@ impl crate::Bus for SystemBus {
     }
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
-        let (interrupts, _costs) = self.tick_peripherals_with_costs();
+        let (interrupts, _costs, dma_requests) = self.tick_peripherals_with_costs();
+        
+        // Execute DMA requests
+        if !dma_requests.is_empty() {
+            let _ = self.execute_dma(&dma_requests);
+        }
+
         interrupts
+    }
+
+    fn execute_dma(&mut self, requests: &[DmaRequest]) -> SimResult<()> {
+        for req in requests {
+            match req.direction {
+                crate::DmaDirection::Read => {
+                    // Note: In a real system, the DMA controller reads into its internal register.
+                    // Here we just verify the read is valid for now, or we could pass the value back.
+                    // For STM32 DMA, it's usually memory-to-peripheral or peripheral-to-memory.
+                    let _ = self.read_u8(req.addr)?;
+                }
+                crate::DmaDirection::Write => {
+                    self.write_u8(req.addr, req.val)?;
+                }
+            }
+        }
+        Ok(())
     }
 }

@@ -139,7 +139,11 @@ impl Peripheral for Adc {
             }
         }
 
-        PeripheralTickResult { irq, cycles }
+        PeripheralTickResult {
+            irq,
+            cycles,
+            ..Default::default()
+        }
     }
 
     fn as_any(&self) -> Option<&dyn Any> {

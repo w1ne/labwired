@@ -188,30 +188,45 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbEventLoop {
         use gdbstub::stub::run_blocking::Event;
         use std::io::Read;
 
-        // Non-blocking peep at connection for interrupt
-        let mut byte = [0];
-        conn.set_nonblocking(true).ok();
-        let incoming = match conn.read(&mut byte) {
-            Ok(1) => Some(byte[0]),
-            _ => None,
-        };
-        conn.set_nonblocking(false).ok();
+        loop {
+            // Non-blocking peep at connection for interrupt
+            let mut byte = [0];
+            conn.set_nonblocking(true).ok();
+            let incoming = match conn.read(&mut byte) {
+                Ok(1) => {
+                    conn.set_nonblocking(false).ok();
+                    Some(byte[0])
+                }
+                _ => {
+                    conn.set_nonblocking(false).ok();
+                    None
+                }
+            };
 
-        if let Some(b) = incoming {
-            return Ok(Event::IncomingData(b));
-        }
+            if let Some(b) = incoming {
+                return Ok(Event::IncomingData(b));
+            }
 
-        // Run machine for a bit
-        match target.machine.run(Some(1000)) {
-            Ok(StopReason::Breakpoint(_)) => Ok(Event::TargetStopped(BaseStopReason::Signal(
-                Signal::SIGTRAP,
-            ))),
-            Ok(StopReason::StepDone) => Ok(Event::TargetStopped(BaseStopReason::Signal(
-                Signal::SIGTRAP,
-            ))),
-            _ => {
-                // Keep running
-                Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGINT)))
+            // Run machine for a small chunk
+            match target.machine.run(Some(1000)) {
+                Ok(StopReason::Breakpoint(_)) => {
+                    return Ok(Event::TargetStopped(BaseStopReason::Signal(
+                        Signal::SIGTRAP,
+                    )))
+                }
+                Ok(StopReason::StepDone) => {
+                    return Ok(Event::TargetStopped(BaseStopReason::Signal(
+                        Signal::SIGTRAP,
+                    )))
+                }
+                Ok(_) => {
+                    // MaxSteps reached, continue loop and check for interrupt again
+                    continue;
+                }
+                Err(e) => {
+                    tracing::error!("GDB Simulation Error: {}", e);
+                    return Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGSEGV)));
+                }
             }
         }
     }
@@ -231,8 +246,9 @@ mod tests {
 
     #[test]
     fn test_target_register_access() {
-        let bus = SystemBus::new();
-        let machine = Machine::<CortexM>::with_bus(bus);
+        let mut bus = SystemBus::new();
+        let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+        let machine = Machine::new(cpu, bus);
         let mut target = LabwiredTarget::new(machine);
 
         // Mock some register values
@@ -262,7 +278,8 @@ mod tests {
         // usually it's built from config or manually added to the bus internal vector.
         // Actually SystemBus might have a way to add peripherals in tests.
 
-        let machine = Machine::<CortexM>::with_bus(bus);
+        let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+        let machine = Machine::new(cpu, bus);
         let mut target = LabwiredTarget::new(machine);
 
         // We can use the read_memory write_memory logic.

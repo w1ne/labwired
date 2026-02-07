@@ -91,6 +91,7 @@ impl Peripheral for Tmp102 {
         PeripheralTickResult {
             irq: false,
             cycles: 1,
+            ..Default::default()
         }
     }
 

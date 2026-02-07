@@ -359,7 +359,7 @@ fn run_interactive(cli: Cli) -> ExitCode {
     };
 
     let system_path = cli.system.clone();
-    let bus = match build_bus(system_path.clone()) {
+    let mut bus = match build_bus(system_path.clone()) {
         Ok(bus) => bus,
         Err(e) => {
             tracing::error!("{:#}", e);
@@ -381,7 +381,8 @@ fn run_interactive(cli: Cli) -> ExitCode {
 
     let metrics = std::sync::Arc::new(labwired_core::metrics::PerformanceMetrics::new());
 
-    let mut machine = labwired_core::Machine::<labwired_core::cpu::CortexM>::with_bus(bus);
+    let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+    let mut machine = labwired_core::Machine::new(cpu, bus);
     machine.observers.push(metrics.clone());
     if let Err(e) = machine.load_firmware(&program) {
         tracing::error!("Failed to load firmware into memory: {}", e);
@@ -709,7 +710,8 @@ fn run_test(args: TestArgs) -> ExitCode {
     };
 
     let metrics = std::sync::Arc::new(labwired_core::metrics::PerformanceMetrics::new());
-    let mut machine = labwired_core::Machine::<labwired_core::cpu::CortexM>::with_bus(bus);
+    let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+    let mut machine = labwired_core::Machine::new(cpu, bus);
     machine.observers.push(metrics.clone());
 
     if let Err(e) = machine.load_firmware(&program) {
