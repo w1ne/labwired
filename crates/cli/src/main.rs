@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use labwired_config::{load_test_script, LoadedTestScript, StopReason, TestAssertion, TestLimits};
 
@@ -353,13 +353,13 @@ fn main() -> ExitCode {
 fn run_interactive(cli: Cli) -> ExitCode {
     info!("Starting LabWired Simulator");
 
-    let Some(firmware) = cli.firmware else {
+    let Some(firmware) = &cli.firmware else {
         tracing::error!("Missing required --firmware argument");
         return ExitCode::from(EXIT_CONFIG_ERROR);
     };
 
     let system_path = cli.system.clone();
-    let mut bus = match build_bus(system_path.clone()) {
+    let bus = match build_bus(system_path.clone()) {
         Ok(bus) => bus,
         Err(e) => {
             tracing::error!("{:#}", e);
@@ -368,7 +368,7 @@ fn run_interactive(cli: Cli) -> ExitCode {
     };
 
     info!("Loading firmware: {:?}", firmware);
-    let program = match labwired_loader::load_elf(&firmware) {
+    let program = match labwired_loader::load_elf(firmware) {
         Ok(program) => program,
         Err(e) => {
             tracing::error!("{:#}", e);
@@ -381,23 +381,62 @@ fn run_interactive(cli: Cli) -> ExitCode {
 
     let metrics = std::sync::Arc::new(labwired_core::metrics::PerformanceMetrics::new());
 
+    let cpu_arch = if let Some(sys_path) = &system_path {
+         match labwired_config::ChipDescriptor::from_file(sys_path) {
+            Ok(c) => c.arch,
+            Err(e) => {
+                tracing::error!("Failed to parse chip descriptor: {}", e);
+                return ExitCode::from(EXIT_CONFIG_ERROR);
+            }
+        }
+    } else {
+        // Default to Arm if no system config provided (backward compatibility)
+        labwired_config::Arch::Arm
+    };
+
+    if program.arch != labwired_core::Arch::Unknown {
+         // Map core::Arch to config::Arch for comparison
+         let prog_arch = match program.arch {
+             labwired_core::Arch::Arm => labwired_config::Arch::Arm,
+             labwired_core::Arch::RiscV => labwired_config::Arch::RiscV,
+             _ => labwired_config::Arch::Unknown,
+         };
+         
+         if prog_arch != cpu_arch {
+             tracing::warn!("Architecture Mismatch! Config expects {:?}, but ELF is {:?}", cpu_arch, prog_arch);
+         }
+    }
+
+    match cpu_arch {
+        labwired_config::Arch::Arm => run_interactive_arm(cli, bus, program, metrics),
+        labwired_config::Arch::RiscV => run_interactive_riscv(cli, bus, program, metrics),
+        _ => {
+            error!("Unsupported architecture: {:?}", cpu_arch);
+            ExitCode::from(EXIT_CONFIG_ERROR)
+        }
+    }
+}
+
+fn run_interactive_arm(
+    cli: Cli,
+    mut bus: labwired_core::bus::SystemBus,
+    program: labwired_core::memory::ProgramImage,
+    metrics: Arc<labwired_core::metrics::PerformanceMetrics>,
+) -> ExitCode {
     let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
     let mut machine = labwired_core::Machine::new(cpu, bus);
     machine.observers.push(metrics.clone());
+    
     if let Err(e) = machine.load_firmware(&program) {
         tracing::error!("Failed to load firmware into memory: {}", e);
         return ExitCode::from(EXIT_RUNTIME_ERROR);
     }
 
-    info!("Starting Simulation...");
+    info!("Starting Simulation (ARM Cortex-M)...");
     info!(
         "Initial PC: {:#x}, SP: {:#x}",
         machine.cpu.pc, machine.cpu.sp
     );
-
-    let mut stop_reason = StopReason::MaxSteps;
-    let mut steps_executed: u64 = 0;
-    let mut stop_message: Option<String> = None;
 
     // Check if GDB server is requested
     if let Some(port) = cli.gdb {
@@ -409,11 +448,91 @@ fn run_interactive(cli: Cli) -> ExitCode {
         return ExitCode::from(EXIT_PASS);
     }
 
-    // Run for specified number of steps
+    let result = run_simulation_loop(&cli, &mut machine, &metrics);
+
+    if let Some(path) = &cli.snapshot {
+        // Need to reconstruct full paths or pass them? 
+        // cli.firmware is Option<PathBuf>, but checking run_interactive, it ensures firmware is set.
+        // But run_interactive passed `program` not paths.
+        // Creating cli passes ownership. `cli` has `firmware`.
+        // `cli.system` is `Option<PathBuf>`.
+        
+        let firmware_path = cli.firmware.as_ref().expect("Firmware path required");
+        let system_path = cli.system.as_ref();
+
+        write_interactive_snapshot(
+            path,
+            &metrics,
+            &machine,
+            InteractiveSnapshotInputs {
+                firmware_path,
+                system_path,
+                max_steps: cli.max_steps,
+                steps_executed: result.steps_executed,
+                stop_reason: result.stop_reason,
+                message: result.stop_message,
+            },
+        );
+    }
+
+    report_metrics(&machine.cpu, &metrics);
+    ExitCode::from(EXIT_PASS)
+}
+
+fn run_interactive_riscv(
+    cli: Cli,
+    mut bus: labwired_core::bus::SystemBus,
+    program: labwired_core::memory::ProgramImage,
+    metrics: Arc<labwired_core::metrics::PerformanceMetrics>,
+) -> ExitCode {
+    let cpu = labwired_core::system::riscv::configure_riscv(&mut bus);
+    let mut machine = labwired_core::Machine::new(cpu, bus);
+    machine.observers.push(metrics.clone());
+
+    if let Err(e) = machine.load_firmware(&program) {
+        tracing::error!("Failed to load firmware into memory: {}", e);
+        return ExitCode::from(EXIT_RUNTIME_ERROR);
+    }
+
+    info!("Starting Simulation (RISC-V)...");
+    info!(
+        "Initial PC: {:#x}, SP: {:#x}",
+        machine.cpu.pc, machine.cpu.x[2] // SP is x2 in RISC-V convention
+    );
+
+    if cli.gdb.is_some() {
+        warn!("GDB server not yet supported for RISC-V. Ignoring --gdb.");
+    }
+    
+    if cli.snapshot.is_some() {
+        warn!("Snapshots not yet supported for RISC-V. Ignoring --snapshot.");
+    }
+
+    let _result = run_simulation_loop(&cli, &mut machine, &metrics);
+
+    report_metrics(&machine.cpu, &metrics);
+    ExitCode::from(EXIT_PASS)
+}
+
+struct LoopResult {
+    stop_reason: StopReason,
+    steps_executed: u64,
+    stop_message: Option<String>,
+}
+
+fn run_simulation_loop<C: labwired_core::Cpu>(
+    cli: &Cli,
+    machine: &mut labwired_core::Machine<C>,
+    metrics: &labwired_core::metrics::PerformanceMetrics,
+) -> LoopResult {
+    let mut stop_reason = StopReason::MaxSteps;
+    let mut steps_executed: u64 = 0;
+    let mut stop_message: Option<String> = None;
+
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
-        if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.pc) {
-            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.pc, step);
+        if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.get_pc()) {
+            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.get_pc(), step);
             stop_reason = StopReason::Halt;
             steps_executed = step as u64;
             break;
@@ -421,7 +540,6 @@ fn run_interactive(cli: Cli) -> ExitCode {
         match machine.step() {
             Ok(_) => {
                 steps_executed = (step + 1) as u64;
-                // Periodically report IPS if not in trace mode
                 if !cli.trace && step > 0 && step % 10000 == 0 {
                     info!(
                         "Progress: {} steps, current IPS: {:.2}",
@@ -443,30 +561,23 @@ fn run_interactive(cli: Cli) -> ExitCode {
             }
         }
     }
-
-    if let Some(path) = &cli.snapshot {
-        write_interactive_snapshot(
-            path,
-            &metrics,
-            &machine,
-            InteractiveSnapshotInputs {
-                firmware_path: &firmware,
-                system_path: system_path.as_ref(),
-                max_steps: cli.max_steps,
-                steps_executed,
-                stop_reason: stop_reason.clone(),
-                message: stop_message,
-            },
-        );
+    
+    LoopResult {
+        stop_reason,
+        steps_executed,
+        stop_message,
     }
+}
 
-    info!("Simulation loop finished (demo).");
-    info!("Final PC: {:#x}", machine.cpu.pc);
+fn report_metrics<C: labwired_core::Cpu>(
+    cpu: &C,
+    metrics: &labwired_core::metrics::PerformanceMetrics,
+) {
+    info!("Simulation loop finished.");
+    info!("Final PC: {:#x}", cpu.get_pc());
     info!("Total Instructions: {}", metrics.get_instructions());
     info!("Total Cycles: {}", metrics.get_cycles());
     info!("Average IPS: {:.2}", metrics.get_ips());
-
-    ExitCode::from(EXIT_PASS)
 }
 
 fn build_stop_reason_details(

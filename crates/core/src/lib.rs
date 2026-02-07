@@ -21,6 +21,13 @@ use std::sync::Arc;
 
 mod tests;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Arch {
+    Arm,
+    RiscV,
+    Unknown,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SimulationError {
     #[error("Memory access violation at {0:#x}")]
