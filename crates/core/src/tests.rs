@@ -10,7 +10,7 @@ mod tests {
     use crate::decoder::arm::{self as decoder, Instruction};
     use crate::peripherals::nvic::NvicState;
     use crate::{Bus, Cpu, Machine, Peripheral, SimResult};
-    use labwired_config::{ChipDescriptor, MemoryRange, PeripheralConfig, SystemManifest};
+    use labwired_config::{Arch, ChipDescriptor, MemoryRange, PeripheralConfig, SystemManifest};
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
     use std::sync::Arc;
@@ -274,7 +274,7 @@ mod tests {
     fn test_from_config_skips_unsupported_peripherals() {
         let chip = ChipDescriptor {
             name: "test-chip".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),
@@ -340,7 +340,7 @@ mod tests {
     fn test_from_config_defaults_size_irq_and_base() {
         let chip = ChipDescriptor {
             name: "test-chip-2".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),
@@ -398,7 +398,7 @@ mod tests {
     fn test_from_config_honors_size_and_irq() {
         let chip = ChipDescriptor {
             name: "test-chip-3".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),

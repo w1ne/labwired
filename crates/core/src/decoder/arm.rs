@@ -58,6 +58,8 @@ pub enum Instruction {
     Stm { rn: u8, registers: u8 },   // STM Rn, {Rlist}
 
     // Control Flow
+    Cbz { rn: u8, imm: u8 }, // CBZ Rn, <label>
+    Cbnz { rn: u8, imm: u8 }, // CBNZ Rn, <label>
     Bl { offset: i32 },     // BL <label> (32-bit T1+T2)
     Bx { rm: u8 },          // BX Rm
     Mul { rd: u8, rn: u8 }, // MUL Rd, Rn (Rd = Rn * Rd)
@@ -355,12 +357,30 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
             let rd = (opcode & 0x7) as u8;
             return Instruction::Uxtb { rd, rm };
         }
+
+        // CBZ/CBNZ (T1): 1011 op i 1 imm5 rn
+        if (opcode & 0xF500) == 0xB100 {
+            let op = (opcode >> 11) & 1;
+            let i = (opcode >> 9) & 1;
+            let imm5 = ((opcode >> 3) & 0x1F) as u8;
+            let rn = (opcode & 0x7) as u8;
+            let imm = ((i << 6) as u8) | (imm5 << 1);
+            if op == 0 {
+                return Instruction::Cbz { rn, imm };
+            } else {
+                return Instruction::Cbnz { rn, imm };
+            }
+        }
+
+        // HINT/IT (T1): 1011 1111 ...
+        if (opcode & 0xFF00) == 0xBF00 {
+            return Instruction::Nop;
+        }
     }
 
-    // 6. 32-bit Instruction Prefix
-    // 1111 0... (0xF000 mask 0xF800)
-    // 1111 1... (0xF800 mask 0xF800)
-    if (opcode & 0xF000) == 0xF000 {
+    // 6. 32-bit Instruction Prefix (0xE800-0xFFFF range, excluding B/BL 16-bit range)
+    // 32-bit Thumb instructions start with 111, with bits [12:11] != 00
+    if (opcode & 0xE000) == 0xE000 && (opcode & 0x1800) != 0 {
         return Instruction::Prefix32(opcode);
     }
 

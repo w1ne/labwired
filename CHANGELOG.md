@@ -6,11 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Refactored
-- **Multi-Architecture Support**:
-    - **Modular CPU**: Decoupled `CortexM` from the generic `Cpu` trait, moving implementation to a dedicated module.
-    - **Generic Bus**: Removed architecture-specific interrupt logic from `SystemBus`, enabling cleaner support for future architectures like RISC-V.
-    - **Interrupt Dispatch**: Implemented `explicit_irqs` in `PeripheralTickResult`, allowing peripherals to trigger specific interrupts directly.
+### Fixed
+- **Instruction Set Coverage**:
+    - **Thumb-2 Data Processing**: Fixed `thumb_expand_imm` logic for bitmask expansion (XYXY patterns).
+    - **Memory Access**: Standardized `F8xx` block handling for T3/T4 variants, including signed 8-bit offsets, pre/post-indexing, and writeback.
+    - **Shifted Registers**: Implemented full barrel shifter logic for data-processing instructions (LSL, LSR, ASR, ROR).
+    - **Control Flow**: Added support for 16-bit `CBZ` and `CBNZ` branch instructions.
+    - **Hints**: Added catch-all `NOP` for hint and `IT` block instructions (`0xBFxx`) to prevent crashes in HAL-heavy code.
+- **Peripherals**:
+    - **UART**: Completed status register implementation with `TXE` (Transmit Empty) and `TC` (Transmission Complete) flags to support blocking HAL drivers.
+
+### Added
+- **ISA Extensions**:
+    - **Misc Thumb-2**: Implemented `CLZ` (Count Leading Zeros) instruction.
+    - **Instruction Decoder**: Enhanced 32-bit Thumb-2 instruction reassembly and opcode extraction for cleaner extension support.
 
 ### Added
 - **RISC-V Support**:
