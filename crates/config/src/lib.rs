@@ -9,6 +9,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Arch {
+    #[serde(alias = "cortex-m3", alias = "cortex-m4", alias = "cortex-m7")]
+    Arm,
+    #[serde(alias = "riscv32", alias = "rv32i", alias = "rv32imac")]
+    RiscV,
+    Unknown,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MemoryRange {
     pub base: u64,
@@ -31,7 +41,7 @@ pub struct PeripheralConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChipDescriptor {
     pub name: String,
-    pub arch: String, // e.g. "cortex-m3"
+    pub arch: Arch, // Parsed from string
     pub flash: MemoryRange,
     pub ram: MemoryRange,
     pub peripherals: Vec<PeripheralConfig>,

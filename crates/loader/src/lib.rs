@@ -20,7 +20,16 @@ pub fn load_elf(path: &Path) -> Result<ProgramImage> {
 
     info!("ELF Entry Point: {:#x}", elf.entry);
 
-    let mut program_image = ProgramImage::new(elf.entry);
+    let arch = match elf.header.e_machine {
+        goblin::elf::header::EM_ARM => labwired_core::Arch::Arm,
+        goblin::elf::header::EM_RISCV => labwired_core::Arch::RiscV,
+        _ => {
+            warn!("Unknown ELF machine type: {}", elf.header.e_machine);
+            labwired_core::Arch::Unknown
+        }
+    };
+
+    let mut program_image = ProgramImage::new(elf.entry, arch);
 
     for ph in elf.program_headers {
         if ph.p_type == PT_LOAD {
