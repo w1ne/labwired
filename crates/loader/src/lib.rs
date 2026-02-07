@@ -218,9 +218,9 @@ mod tests {
         let provider = SymbolProvider::new(&elf_path).expect("Failed to create SymbolProvider");
 
         // Try to resolve a location in main.rs
-        // Note: Line 11 is 'let a: u32 = 100;'
-        let pc = provider.location_to_pc("main.rs", 11);
-        assert!(pc.is_some(), "Should resolve main.rs:11 to a PC");
+        // Note: Line 14 is 'fn main() -> ! {'
+        let pc = provider.location_to_pc("main.rs", 14);
+        assert!(pc.is_some(), "Should resolve main.rs:14 to a PC");
 
         let addr = pc.unwrap();
         assert!(addr > 0, "Resolved address should be valid");
@@ -230,6 +230,6 @@ mod tests {
             .lookup(addr)
             .expect("Lookup failed for resolved PC");
         assert!(loc.file.ends_with("main.rs"));
-        assert_eq!(loc.line, Some(11));
+        assert_eq!(loc.line, Some(14));
     }
 }
