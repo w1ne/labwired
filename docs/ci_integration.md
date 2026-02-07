@@ -14,15 +14,15 @@ This guide shows you how to integrate LabWired firmware testing into your contin
 2. **Create a test script** (`tests/firmware-test.yaml`):
    ```yaml
    schema_version: "1.0"
-   
+
    inputs:
      firmware: target/thumbv7m-none-eabi/release/my-firmware
      system: system.yaml
-   
+
    limits:
      max_steps: 100000
      wall_time_ms: 5000
-   
+
    assertions:
      - uart_contains: "Tests passed"
      - expected_stop_reason: breakpoint
@@ -228,7 +228,7 @@ strategy:
 steps:
   - name: Build
     run: cargo build --${{ matrix.build_type }} --target ${{ matrix.target }}
-  
+
   - name: Test
     uses: w1ne/labwired/.github/actions/labwired-test@main
     with:

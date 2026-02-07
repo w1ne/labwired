@@ -32,13 +32,13 @@ build:firmware:
   stage: build
   image: rust:latest
   extends: .rust_cache
-  
+
   before_script:
     - rustup target add thumbv7m-none-eabi
-  
+
   script:
     - cargo build --release --target thumbv7m-none-eabi -p your-firmware
-  
+
   artifacts:
     paths:
       - target/thumbv7m-none-eabi/release/your-firmware
@@ -50,12 +50,12 @@ build:firmware:
 #   image: ${LABWIRED_IMAGE}
 #   dependencies:
 #     - build:firmware
-#   
+#
 #   script:
-#     - labwired test --script tests/firmware-test.yaml 
-#                     --output-dir test-results 
+#     - labwired test --script tests/firmware-test.yaml
+#                     --output-dir test-results
 #                     --no-uart-stdout
-#   
+#
 #   artifacts:
 #     when: always
 #     paths:
@@ -71,7 +71,7 @@ test:source:
   extends: .rust_cache
   dependencies:
     - build:firmware
-  
+
   before_script:
     - apt-get update && apt-get install -y git
     - git clone https://github.com/w1ne/labwired.git /tmp/labwired
@@ -79,12 +79,12 @@ test:source:
     - cargo build --release -p labwired-cli
     - export PATH="/tmp/labwired/target/release:$PATH"
     - cd ${CI_PROJECT_DIR}
-  
+
   script:
-    - labwired test --script tests/firmware-test.yaml 
-                    --output-dir test-results 
+    - labwired test --script tests/firmware-test.yaml
+                    --output-dir test-results
                     --no-uart-stdout
-  
+
   artifacts:
     when: always
     paths:
@@ -99,22 +99,22 @@ report:summary:
   image: python:3.11-slim
   dependencies:
     - test:source
-  
+
   script:
     - |
       python3 << 'EOF'
       import json
       import sys
-      
+
       try:
           with open('test-results/result.json', 'r') as f:
               result = json.load(f)
-          
+
           status = result.get('status', 'unknown')
           print(f"Test Status: {status}")
           print(f"Instructions: {result.get('instructions_executed', 0)}")
           print(f"Cycles: {result.get('cycles_executed', 0)}")
-          
+
           if status != 'pass':
               print(f"Stop Reason: {result.get('stop_reason', 'unknown')}")
               sys.exit(1)
@@ -122,7 +122,7 @@ report:summary:
           print(f"Error reading results: {e}")
           sys.exit(1)
       EOF
-  
+
   when: always
 
 # Matrix testing example
@@ -130,20 +130,20 @@ report:summary:
   stage: test
   image: rust:latest
   extends: .rust_cache
-  
+
   before_script:
     - rustup target add ${RUST_TARGET}
     - git clone https://github.com/w1ne/labwired.git /tmp/labwired
     - cd /tmp/labwired && cargo build --release -p labwired-cli
     - export PATH="/tmp/labwired/target/release:$PATH"
     - cd ${CI_PROJECT_DIR}
-  
+
   script:
     - cargo build --release --target ${RUST_TARGET} -p your-firmware
-    - labwired test --script ${TEST_SCRIPT} 
-                    --output-dir test-results-${RUST_TARGET} 
+    - labwired test --script ${TEST_SCRIPT}
+                    --output-dir test-results-${RUST_TARGET}
                     --no-uart-stdout
-  
+
   artifacts:
     when: always
     paths:

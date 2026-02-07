@@ -49,7 +49,7 @@ impl crate::Peripheral for Uart {
                     guard.push(value);
                 }
             } else {
-                 tracing::info!("UART WRITE (NO SINK): {:#02x}", value);
+                tracing::info!("UART WRITE (NO SINK): {:#02x}", value);
             }
 
             if self.echo_stdout {

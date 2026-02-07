@@ -58,11 +58,11 @@ pub enum Instruction {
     Stm { rn: u8, registers: u8 },   // STM Rn, {Rlist}
 
     // Control Flow
-    Cbz { rn: u8, imm: u8 }, // CBZ Rn, <label>
+    Cbz { rn: u8, imm: u8 },  // CBZ Rn, <label>
     Cbnz { rn: u8, imm: u8 }, // CBNZ Rn, <label>
-    Bl { offset: i32 },     // BL <label> (32-bit T1+T2)
-    Bx { rm: u8 },          // BX Rm
-    Mul { rd: u8, rn: u8 }, // MUL Rd, Rn (Rd = Rn * Rd)
+    Bl { offset: i32 },       // BL <label> (32-bit T1+T2)
+    Bx { rm: u8 },            // BX Rm
+    Mul { rd: u8, rn: u8 },   // MUL Rd, Rn (Rd = Rn * Rd)
 
     // SP-Relative
     LdrSp { rt: u8, imm: u16 },    // LDR Rt, [SP, #imm]

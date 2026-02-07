@@ -9,10 +9,8 @@ use crate::{Bus, Cpu, SimResult, SimulationObserver};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-const PSR_N: u32 = 1 << 31;
-const PSR_Z: u32 = 1 << 30;
+// PSR Bits (Internal usage) - Omitted if unused
 const PSR_C: u32 = 1 << 29;
-const PSR_V: u32 = 1 << 28;
 
 #[derive(Debug, Default)]
 pub struct CortexM {
@@ -205,7 +203,6 @@ impl Cpu for CortexM {
         }
     }
 
-
     fn get_register(&self, id: u8) -> u32 {
         self.read_reg(id)
     }
@@ -232,7 +229,7 @@ impl Cpu for CortexM {
         bus: &mut dyn Bus,
         observers: &[Arc<dyn SimulationObserver>],
     ) -> SimResult<()> {
-        static mut STEP_COUNT: u32 = 0;
+        static STEP_COUNT: AtomicU32 = AtomicU32::new(0);
         // Check for pending exceptions before executing instruction
         if self.pending_exceptions != 0 {
             // Find highest priority exception (Simplified: highest bit)
@@ -286,11 +283,9 @@ impl Cpu for CortexM {
         // Decode
         let instruction = decode_thumb_16(opcode);
 
-        unsafe {
-            if STEP_COUNT % 100000 == 0 {
-                tracing::info!("CPU STEP {}: PC={:#x}", STEP_COUNT, self.pc);
-            }
-            STEP_COUNT += 1;
+        let count = STEP_COUNT.fetch_add(1, Ordering::SeqCst);
+        if count.is_multiple_of(100000) {
+            tracing::info!("CPU STEP {}: PC={:#x}", count, self.pc);
         }
 
         tracing::debug!(
@@ -741,23 +736,30 @@ impl Cpu for CortexM {
                         let imm2 = ((h2 >> 6) & 0x3) as u32;
                         let imm5 = (imm3 << 2) | imm2;
                         let stype = (h2 >> 4) & 0x3;
-                        
+
                         let op1 = self.read_reg(rn);
                         let mut op2 = self.read_reg(rm);
-                        
+
                         match stype {
-                            0 => op2 = op2 << imm5, // LSL
-                            1 => { // LSR
+                            0 => op2 <<= imm5, // LSL
+                            1 => {
+                                // LSR
                                 op2 = if imm5 == 0 { 0 } else { op2 >> imm5 };
-                            },
-                            2 => { // ASR
+                            }
+                            2 => {
+                                // ASR
                                 op2 = if imm5 == 0 {
-                                    if (op2 & 0x80000000) != 0 { 0xFFFFFFFF } else { 0 }
+                                    if (op2 & 0x80000000) != 0 {
+                                        0xFFFFFFFF
+                                    } else {
+                                        0
+                                    }
                                 } else {
                                     ((op2 as i32) >> imm5) as u32
                                 };
-                            },
-                            3 => { // ROR / RRX
+                            }
+                            3 => {
+                                // ROR
                                 if imm5 != 0 {
                                     op2 = op2.rotate_right(imm5);
                                 }
@@ -767,17 +769,20 @@ impl Cpu for CortexM {
 
                         let mut result = 0u32;
                         match op {
-                            0x0 => { // AND
+                            0x0 => {
+                                // AND
                                 result = op1 & op2;
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0x1 => { // BIC
+                            }
+                            0x1 => {
+                                // BIC
                                 result = op1 & !op2;
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0x2 => { // ORR / MOV
+                            }
+                            0x2 => {
+                                // ORR / MOV
                                 if rn == 0xF {
                                     result = op2;
                                 } else {
@@ -785,8 +790,9 @@ impl Cpu for CortexM {
                                 }
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0x3 => { // ORN / MVN
+                            }
+                            0x3 => {
+                                // ORN / MVN
                                 if rn == 0xF {
                                     result = !op2;
                                 } else {
@@ -794,27 +800,30 @@ impl Cpu for CortexM {
                                 }
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0x4 => { // EOR
+                            }
+                            0x4 => {
+                                // EOR
                                 result = op1 ^ op2;
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0x8 => { // ADD
+                            }
+                            0x8 => {
+                                // ADD
                                 result = op1.wrapping_add(op2);
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
-                            0xD => { // SUB
+                            }
+                            0xD => {
+                                // SUB
                                 result = op1.wrapping_sub(op2);
                                 self.write_reg(rd, result);
                                 pc_increment = 4;
-                            },
+                            }
                             _ => {
                                 tracing::warn!("Unknown 32-bit Data-processing (shifted reg) at PC={:#x}: op={:#x}", self.pc, op);
                             }
                         }
-                        
+
                         if s {
                             self.update_nz(result);
                         }
@@ -830,13 +839,13 @@ impl Cpu for CortexM {
                             // TBB / TBH
                             let rm = (h2 & 0xF) as u8;
                             let is_tbh = (h2 & 0x0010) != 0;
-                            
+
                             let mut base = self.read_reg(rn);
                             if rn == 15 {
                                 base = (self.pc & !3).wrapping_add(4);
                             }
                             let index = self.read_reg(rm);
-                            
+
                             if is_tbh {
                                 let addr = base.wrapping_add(index << 1);
                                 if let Ok(halfword) = bus.read_u16(addr as u64) {
@@ -857,7 +866,7 @@ impl Cpu for CortexM {
                             let is_load = op == 3;
                             let base = self.read_reg(rn);
                             let addr = base.wrapping_add(imm8 << 2);
-                            
+
                             if is_load {
                                 if let Ok(v1) = bus.read_u32(addr as u64) {
                                     self.write_reg(rt, v1);
@@ -873,7 +882,12 @@ impl Cpu for CortexM {
                             }
                             pc_increment = 4;
                         } else {
-                            tracing::warn!("Unknown 32-bit E8xx at PC={:#x}: h1={:#06x} h2={:#06x}", self.pc, h1, h2);
+                            tracing::warn!(
+                                "Unknown 32-bit E8xx at PC={:#x}: h1={:#06x} h2={:#06x}",
+                                self.pc,
+                                h1,
+                                h2
+                            );
                         }
                     } else if (h1 & 0xF800) == 0xF000 && (h2 & 0x8000) == 0x8000 {
                         // B.W / BL
@@ -886,9 +900,9 @@ impl Cpu for CortexM {
 
                         let is_bl = (h2 & 0x1000) != 0;
                         let imm_h1 = if is_bl {
-                             (h1 & 0x3FF) as i32
+                            (h1 & 0x3FF) as i32
                         } else {
-                             (h1 & 0x7FF) as i32
+                            (h1 & 0x7FF) as i32
                         };
 
                         let mut offset = if is_bl {
@@ -948,68 +962,78 @@ impl Cpu for CortexM {
 
                         let imm12 = (i << 11) | (imm3 << 8) | imm8;
                         let imm32 = thumb_expand_imm(imm12 as u32);
-                        
+
                         let op1 = self.read_reg(rn);
                         let mut result = 0u32;
                         let mut update_pc = true;
 
                         match op {
-                            0x0 => { // AND
+                            0x0 => {
+                                // AND
                                 result = op1 & imm32;
                                 self.write_reg(rd, result);
-                            },
-                            0x1 => { // BIC
+                            }
+                            0x1 => {
+                                // BIC
                                 result = op1 & !imm32;
                                 self.write_reg(rd, result);
-                            },
-                            0x2 => { // ORR / MOV
+                            }
+                            0x2 => {
+                                // ORR / MOV
                                 if rn == 0xF {
                                     result = imm32;
                                 } else {
                                     result = op1 | imm32;
                                 }
                                 self.write_reg(rd, result);
-                            },
-                            0x3 => { // ORN / MVN
+                            }
+                            0x3 => {
+                                // ORN / MVN
                                 if rn == 0xF {
                                     result = !imm32;
                                 } else {
                                     result = op1 | !imm32;
                                 }
                                 self.write_reg(rd, result);
-                            },
-                            0x4 => { // EOR
+                            }
+                            0x4 => {
+                                // EOR
                                 result = op1 ^ imm32;
                                 self.write_reg(rd, result);
-                            },
-                            0x8 => { // ADD
+                            }
+                            0x8 => {
+                                // ADD
                                 result = op1.wrapping_add(imm32);
                                 self.write_reg(rd, result);
-                            },
-                            0xA => { // ADC
+                            }
+                            0xA => {
+                                // ADC
                                 let carry = if self.xpsr & PSR_C != 0 { 1 } else { 0 };
                                 result = op1.wrapping_add(imm32).wrapping_add(carry);
                                 self.write_reg(rd, result);
-                            },
-                            0xB => { // SBC
+                            }
+                            0xB => {
+                                // SBC
                                 let carry = if self.xpsr & PSR_C != 0 { 1 } else { 0 };
                                 result = op1.wrapping_sub(imm32).wrapping_sub(1 - carry);
                                 self.write_reg(rd, result);
-                            },
-                            0xD => { // SUB
+                            }
+                            0xD => {
+                                // SUB
                                 result = op1.wrapping_sub(imm32);
                                 self.write_reg(rd, result);
-                            },
-                            0xE => { // RSB
+                            }
+                            0xE => {
+                                // RSB
                                 result = imm32.wrapping_sub(op1);
                                 self.write_reg(rd, result);
-                            },
+                            }
                             _ => {
                                 tracing::warn!("Unknown 32-bit Data-processing (modified imm) at PC={:#x}: op={:#x}", self.pc, op);
                                 update_pc = false;
                             }
                         }
-                        
+
                         if s {
                             self.update_nz(result);
                         }
@@ -1029,16 +1053,18 @@ impl Cpu for CortexM {
 
                         let imm12 = (i << 11) | (imm3 << 8) | imm8;
                         let op1 = self.read_reg(rn);
-                        
+
                         match op {
-                            0x0 => { // ADD (imm12)
+                            0x0 => {
+                                // ADD (imm12)
                                 self.write_reg(rd, op1.wrapping_add(imm12 as u32));
                                 pc_increment = 4;
-                            },
-                            0xA => { // SUB (imm12)
+                            }
+                            0xA => {
+                                // SUB (imm12)
                                 self.write_reg(rd, op1.wrapping_sub(imm12 as u32));
                                 pc_increment = 4;
-                            },
+                            }
                             _ => {
                                 tracing::warn!("Unknown 32-bit Data-processing (plain binary imm) at PC={:#x}: op={:#x}", self.pc, op);
                             }
@@ -1054,20 +1080,20 @@ impl Cpu for CortexM {
                         let op1 = (h1 >> 4) & 0xF;
                         let rn = (h1 & 0xF) as u8;
                         let rt = ((h2 >> 12) & 0xF) as u8;
-                        
+
                         // Check for T3 (immediate 12-bit) vs T4 (immediate 8-bit with PUW)
                         // T3 has bit 3 of op1 set (bits 23-20 of instruction are 1xxx)
                         // T4 has bit 3 of op1 clear (bits 23-20 of instruction are 0xxx)
                         let is_t4 = (op1 & 0x8) == 0;
                         let is_register_offset = is_t4 && (h2 & 0x0800) == 0;
-                        
+
                         if !is_register_offset {
                             let mut supported = true;
-                            let mut addr;
+                            let addr;
                             let offset: i32;
                             let mut writeback = false;
                             let mut writeback_val = 0u32;
-                            
+
                             if !is_t4 {
                                 // T3: 12-bit immediate
                                 offset = (h2 & 0xFFF) as i32;
@@ -1079,10 +1105,10 @@ impl Cpu for CortexM {
                                 let u = (h2 >> 9) & 1;
                                 let w = (h2 >> 8) & 1;
                                 let imm8 = (h2 & 0xFF) as i32;
-                                
+
                                 offset = if u != 0 { imm8 } else { -imm8 };
                                 let base = self.read_reg(rn);
-                                
+
                                 if p != 0 {
                                     // Offset or pre-indexed
                                     addr = base.wrapping_add(offset as u32);
@@ -1097,38 +1123,46 @@ impl Cpu for CortexM {
                                     writeback_val = base.wrapping_add(offset as u32);
                                 }
                             }
-                            
+
                             match op1 & 0x7 {
-                                0 => { // STRB
+                                0 => {
+                                    // STRB
                                     let val = (self.read_reg(rt) & 0xFF) as u8;
                                     let _ = bus.write_u8(addr as u64, val);
-                                },
-                                1 => { // LDRB
+                                }
+                                1 => {
+                                    // LDRB
                                     if let Ok(val) = bus.read_u8(addr as u64) {
                                         self.write_reg(rt, val as u32);
                                     }
-                                },
-                                2 => { // STRH
+                                }
+                                2 => {
+                                    // STRH
                                     let val = (self.read_reg(rt) & 0xFFFF) as u16;
                                     let _ = bus.write_u16(addr as u64, val);
-                                },
-                                3 => { // LDRH
+                                }
+                                3 => {
+                                    // LDRH
                                     if let Ok(val) = bus.read_u16(addr as u64) {
                                         self.write_reg(rt, val as u32);
                                     }
-                                },
-                                4 => { // STR
+                                }
+                                4 => {
+                                    // STR
                                     let val = self.read_reg(rt);
                                     let _ = bus.write_u32(addr as u64, val);
-                                },
-                                5 => { // LDR
+                                }
+                                5 => {
+                                    // LDR
                                     if let Ok(val) = bus.read_u32(addr as u64) {
                                         self.write_reg(rt, val);
                                     }
-                                },
-                                _ => { supported = false; }
+                                }
+                                _ => {
+                                    supported = false;
+                                }
                             }
-                            
+
                             if supported {
                                 if writeback {
                                     self.write_reg(rn, writeback_val);
@@ -1138,48 +1172,58 @@ impl Cpu for CortexM {
                                 tracing::warn!("Unknown 32-bit instruction at PC={:#x}: {:#06x} {:#06x} (Unsupported F8xx op={})", self.pc, h1, h2, op1);
                             }
                         } else {
-                             // Register offset (T2)
-                             // Format: 000000 imm2 rm
-                             let rm = (h2 & 0xF) as u8;
-                             let imm2 = ((h2 >> 4) & 0x3) as u32;
-                             
-                             let base = self.read_reg(rn);
-                             let offset = self.read_reg(rm) << imm2;
-                             let addr = base.wrapping_add(offset);
-                             
-                             match op1 & 0x7 {
-                                 0 => { // STRB
-                                     let val = (self.read_reg(rt) & 0xFF) as u8;
-                                     let _ = bus.write_u8(addr as u64, val);
-                                 },
-                                 1 => { // LDRB
-                                     if let Ok(val) = bus.read_u8(addr as u64) {
-                                         self.write_reg(rt, val as u32);
-                                     }
-                                 },
-                                 2 => { // STRH
-                                     let val = (self.read_reg(rt) & 0xFFFF) as u16;
-                                     let _ = bus.write_u16(addr as u64, val);
-                                 },
-                                 3 => { // LDRH
-                                     if let Ok(val) = bus.read_u16(addr as u64) {
-                                         self.write_reg(rt, val as u32);
-                                     }
-                                 },
-                                 4 => { // STR
-                                     let val = self.read_reg(rt);
-                                     let _ = bus.write_u32(addr as u64, val);
-                                 },
-                                 5 => { // LDR
-                                     if let Ok(val) = bus.read_u32(addr as u64) {
-                                         self.write_reg(rt, val);
-                                     }
-                                 },
-                                 _ => {
-                                     tracing::warn!("Unknown 32-bit Register offset F8xx at PC={:#x}: op1={}", self.pc, op1);
-                                 }
-                             }
-                             pc_increment = 4;
+                            // Register offset (T2)
+                            // Format: 000000 imm2 rm
+                            let rm = (h2 & 0xF) as u8;
+                            let imm2 = ((h2 >> 4) & 0x3) as u32;
+
+                            let base = self.read_reg(rn);
+                            let offset = self.read_reg(rm) << imm2;
+                            let addr = base.wrapping_add(offset);
+
+                            match op1 & 0x7 {
+                                0 => {
+                                    // STRB
+                                    let val = (self.read_reg(rt) & 0xFF) as u8;
+                                    let _ = bus.write_u8(addr as u64, val);
+                                }
+                                1 => {
+                                    // LDRB
+                                    if let Ok(val) = bus.read_u8(addr as u64) {
+                                        self.write_reg(rt, val as u32);
+                                    }
+                                }
+                                2 => {
+                                    // STRH
+                                    let val = (self.read_reg(rt) & 0xFFFF) as u16;
+                                    let _ = bus.write_u16(addr as u64, val);
+                                }
+                                3 => {
+                                    // LDRH
+                                    if let Ok(val) = bus.read_u16(addr as u64) {
+                                        self.write_reg(rt, val as u32);
+                                    }
+                                }
+                                4 => {
+                                    // STR
+                                    let val = self.read_reg(rt);
+                                    let _ = bus.write_u32(addr as u64, val);
+                                }
+                                5 => {
+                                    // LDR
+                                    if let Ok(val) = bus.read_u32(addr as u64) {
+                                        self.write_reg(rt, val);
+                                    }
+                                }
+                                _ => {
+                                    tracing::warn!(
+                                        "Unknown 32-bit Register offset F8xx at PC={:#x}: op1={}",
+                                        self.pc,
+                                        op1
+                                    );
+                                }
+                            }
+                            pc_increment = 4;
                         }
                     } else if (h1 & 0xFFF0) == 0xFB90 {
                         // SDIV
@@ -1423,9 +1467,9 @@ fn thumb_expand_imm(imm12: u32) -> u32 {
         // i:imm3 is 0000, 0001, 0010, 0011.
         // Match repetition patterns:
         match imm3 {
-            0 => imm8,                                           // 00000000 00000000 00000000 abcdefgh
-            1 => (imm8 << 16) | imm8,                            // 00000000 abcdefgh 00000000 abcdefgh
-            2 => (imm8 << 24) | (imm8 << 8),                     // abcdefgh 00000000 abcdefgh 00000000
+            0 => imm8,                       // 00000000 00000000 00000000 abcdefgh
+            1 => (imm8 << 16) | imm8,        // 00000000 abcdefgh 00000000 abcdefgh
+            2 => (imm8 << 24) | (imm8 << 8), // abcdefgh 00000000 abcdefgh 00000000
             3 => (imm8 << 24) | (imm8 << 16) | (imm8 << 8) | imm8, // abcdefgh abcdefgh abcdefgh abcdefgh
             _ => unreachable!(),
         }

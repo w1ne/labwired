@@ -72,7 +72,7 @@ use std::any::Any;
 pub struct TempSensor {
     pub sr: u32, // Status: Bit 0 = Busy, Bit 1 = Data Ready
     pub dr: u32, // Data: Temperature in Celsius
-    
+
     #[serde(skip)]
     update_interval: u32,
     #[serde(skip)]
@@ -104,7 +104,7 @@ impl Peripheral for TempSensor {
     fn tick(&mut self) -> PeripheralTickResult {
         self.ticks += 1;
         let mut irq = false;
-        
+
         if self.ticks >= self.update_interval {
             self.ticks = 0;
             self.dr += 1; // Simulate rising temperature
@@ -125,7 +125,7 @@ impl Peripheral for TempSensor {
 
 ## DMA Bus Mastering
 
-If your peripheral needs to perform DMA transfers, it can return `DmaRequest`s from `tick()`. 
+If your peripheral needs to perform DMA transfers, it can return `DmaRequest`s from `tick()`.
 
 ```rust
 impl Peripheral for MyDmaController {

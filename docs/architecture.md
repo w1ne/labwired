@@ -11,14 +11,14 @@ graph TD
     CLI --> Core[labwired-core]
     Config --> Core
     Loader --> Core
-    
+
     subgraph Core [labwired-core]
         CPU[Cortex-M CPU]
         Bus[System Bus]
         Dec[Decoder]
         Mem[Linear Memory]
         Periphs[Dynamic Peripherals]
-        
+
         CPU --> Dec
         CPU --> Bus
         Bus --> Mem
@@ -135,4 +135,3 @@ The host runner and entry point.
 - **Configuration**: Resolves Chip Descriptors and wiring via `labwired-config`.
 - **Loading**: Loads ELF segments into the dynamically configured `SystemBus`.
 - **Simulation**: Runs the `Machine::step()` loop.
-

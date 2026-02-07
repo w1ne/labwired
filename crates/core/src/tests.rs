@@ -15,7 +15,8 @@ mod tests {
     use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
     use std::sync::Arc;
 
-    fn create_machine() -> VariableMachine { // Placeholder name collision? No.
+    fn create_machine() -> VariableMachine {
+        // Placeholder name collision? No.
         let mut bus = crate::bus::SystemBus::new();
         let (cpu, _nvic) = crate::system::cortex_m::configure_cortex_m(&mut bus);
         Machine::new(cpu, bus)

@@ -68,8 +68,8 @@ pub struct SystemManifest {
 
 impl ChipDescriptor {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let f = std::fs::File::open(path)?;
-        serde_yaml::from_reader(f).context("Failed to parse Chip Descriptor")
+        let content = std::fs::read_to_string(&path)?;
+        serde_yaml::from_str(&content).context("Failed to parse Chip Descriptor")
     }
 }
 

@@ -225,7 +225,9 @@ impl gdbstub::stub::run_blocking::BlockingEventLoop for GdbEventLoop {
                 }
                 Err(e) => {
                     tracing::error!("GDB Simulation Error: {}", e);
-                    return Ok(Event::TargetStopped(BaseStopReason::Signal(Signal::SIGSEGV)));
+                    return Ok(Event::TargetStopped(BaseStopReason::Signal(
+                        Signal::SIGSEGV,
+                    )));
                 }
             }
         }

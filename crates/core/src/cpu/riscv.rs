@@ -37,7 +37,7 @@ impl RiscV {
 impl Cpu for RiscV {
     fn reset(&mut self, _bus: &mut dyn Bus) -> SimResult<()> {
         self.pc = 0x8000_0000; // Typical RISC-V Reset Vector (varies by platform)
-        // x0..x31 are 0 by Default
+                               // x0..x31 are 0 by Default
         Ok(())
     }
 
@@ -53,7 +53,12 @@ impl Cpu for RiscV {
         }
 
         let instruction = decode_rv32(opcode);
-        tracing::debug!("PC={:#x}, Op={:#08x}, Instr={:?}", self.pc, opcode, instruction);
+        tracing::debug!(
+            "PC={:#x}, Op={:#08x}, Instr={:?}",
+            self.pc,
+            opcode,
+            instruction
+        );
 
         let mut next_pc = self.pc.wrapping_add(4);
 
@@ -151,11 +156,19 @@ impl Cpu for RiscV {
                 self.write_reg(rd, res);
             }
             Instruction::Slti { rd, rs1, imm } => {
-                let val = if (self.read_reg(rs1) as i32) < imm { 1 } else { 0 };
+                let val = if (self.read_reg(rs1) as i32) < imm {
+                    1
+                } else {
+                    0
+                };
                 self.write_reg(rd, val);
             }
             Instruction::Sltiu { rd, rs1, imm } => {
-                let val = if self.read_reg(rs1) < (imm as u32) { 1 } else { 0 };
+                let val = if self.read_reg(rs1) < (imm as u32) {
+                    1
+                } else {
+                    0
+                };
                 self.write_reg(rd, val);
             }
             Instruction::Xori { rd, rs1, imm } => {
@@ -196,11 +209,19 @@ impl Cpu for RiscV {
                 self.write_reg(rd, res);
             }
             Instruction::Slt { rd, rs1, rs2 } => {
-                let val = if (self.read_reg(rs1) as i32) < (self.read_reg(rs2) as i32) { 1 } else { 0 };
+                let val = if (self.read_reg(rs1) as i32) < (self.read_reg(rs2) as i32) {
+                    1
+                } else {
+                    0
+                };
                 self.write_reg(rd, val);
             }
             Instruction::Sltu { rd, rs1, rs2 } => {
-                let val = if self.read_reg(rs1) < self.read_reg(rs2) { 1 } else { 0 };
+                let val = if self.read_reg(rs1) < self.read_reg(rs2) {
+                    1
+                } else {
+                    0
+                };
                 self.write_reg(rd, val);
             }
             Instruction::Xor { rd, rs1, rs2 } => {
@@ -280,13 +301,11 @@ impl Cpu for RiscV {
         // This is imperfect but allows some visibility.
         // Ideally CpuSnapshot should be an enum or map.
         let mut regs = [0u32; 17];
-        for i in 0..13 {
-            regs[i] = self.x[i];
-        }
+        regs[..13].copy_from_slice(&self.x[..13]);
         regs[13] = self.x[2]; // SP
         regs[14] = self.x[1]; // LR/RA
         regs[15] = self.pc;
-        
+
         crate::snapshot::CpuSnapshot {
             registers: regs.to_vec(),
             xpsr: 0,
@@ -313,11 +332,11 @@ mod tests {
         bus.flash.data = vec![
             0x93, 0x00, 0x50, 0x00, // ADDI x1, x0, 5
         ];
-        
+
         cpu.pc = 0x0000_0000;
         let mut machine = Machine::new(cpu, bus);
         machine.step().unwrap();
-        
+
         assert_eq!(machine.cpu.read_reg(1), 5);
         assert_eq!(machine.cpu.pc, 4);
     }
@@ -331,8 +350,8 @@ mod tests {
         // 3. BEQ x1, x2, +8 (skip next instruction)
         // 4. ADDI x3, x0, 1 (should be skipped)
         // 5. ADDI x4, x0, 1 (target)
-        
-        // imm for BEQ +8: 
+
+        // imm for BEQ +8:
         // 0x00000063 (BEQ x0, x0, 0)
         // imm[12]=0, imm[10:5]=0, imm[4:1]=4 (bit 3), imm[11]=0
         // offset = 8. binary: 1000.
@@ -343,7 +362,7 @@ mod tests {
         // opcode = 1100011 (0x63)
         // funct3 = 000
         // rs1 = 1, rs2 = 2
-        
+
         // BEQ x1, x2, 8 -> 0x00208463
         // 0000 0000 0010 0000 1000 0100 0110 0011 -> 0x00208463 ?
         // imm[12]=0, imm[10:5]=000000.
@@ -357,14 +376,13 @@ mod tests {
             0x13, 0x01, 0xA0, 0x00, // ADDI x2, x0, 10 (0x00A00113) - wait, rs1=0.
             // ADDI x2, x0, 10: imm=10, rs1=0, funct3=0, rd=2, opcode=0x13
             // 000000001010 00000 000 00010 0010011 -> 0x00A00113. Correct.
-            
+
             // BEQ x1, x2, 8
             // 0000000 00010 00001 000 01000 1100011 -> 0x00208463
             // imm[12]=0, imm[10:5]=0, rs2=2, rs1=1, funct3=0, imm[4:1]=0100 (+8?), imm[11]=0, opcode=0x63.
             // imm[4:1]=4 -> bit 3 is 1? No, imm[4:1] bits are at positions 11-8.
             // imm[4:1] = 0100 means bit 3 is 1. Yes 1<<3 = 8.
-            0x63, 0x84, 0x20, 0x00, 
-            
+            0x63, 0x84, 0x20, 0x00,
             // Should be skipped (PC+4 from BEQ = 12. BEQ target = 8 + 8 = 16. Wait. PC of BEQ is 8. Target = 8+8=16.)
             // Offset is from current PC.
             // 0: ADDI x1
@@ -372,32 +390,31 @@ mod tests {
             // 8: BEQ
             // 12: ADDI x3 (skipped)
             // 16: ADDI x4 (target)
-            
-            0x13, 0x01, 0x10, 0x00, // ADDI x3, x0, 1 (0x00100193) - wait this is ADDI x3, x0, 1.
-            
+            0x13, 0x01, 0x10,
+            0x00, // ADDI x3, x0, 1 (0x00100193) - wait this is ADDI x3, x0, 1.
             0x13, 0x02, 0x10, 0x00, // ADDI x4, x0, 1 (0x00100213).
         ];
-        
+
         cpu.pc = 0x0000_0000;
         let mut machine = Machine::new(cpu, bus);
-        
+
         // Step 1: x1 = 10
         machine.step().unwrap();
         assert_eq!(machine.cpu.read_reg(1), 10);
-        
+
         // Step 2: x2 = 10
         machine.step().unwrap();
         assert_eq!(machine.cpu.read_reg(2), 10);
-        
+
         // Step 3: BEQ taken -> PC = 8 + 8 = 16
         assert_eq!(machine.cpu.pc, 8);
         machine.step().unwrap();
         assert_eq!(machine.cpu.pc, 16);
-        
+
         // Step 4: ADDI x4, x0, 1
         machine.step().unwrap();
         assert_eq!(machine.cpu.read_reg(4), 1);
-        
+
         // Ensure x3 is still 0
         assert_eq!(machine.cpu.read_reg(3), 0);
     }

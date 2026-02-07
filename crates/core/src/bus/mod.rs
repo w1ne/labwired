@@ -252,7 +252,7 @@ impl SystemBus {
                     nvic.ispr[idx].fetch_or(1 << bit, Ordering::SeqCst);
                 }
             } else {
-                // Core exceptions are handled differently if needed, 
+                // Core exceptions are handled differently if needed,
                 // but signal_nvic_irq is mostly for external IRQs.
                 tracing::warn!("signal_nvic_irq called for core exception {}", irq);
             }
@@ -287,7 +287,9 @@ impl SystemBus {
         Ok(())
     }
 
-    pub fn tick_peripherals_with_costs(&mut self) -> (Vec<u32>, Vec<PeripheralTickCost>, Vec<DmaRequest>) {
+    pub fn tick_peripherals_with_costs(
+        &mut self,
+    ) -> (Vec<u32>, Vec<PeripheralTickCost>, Vec<DmaRequest>) {
         let mut interrupts = Vec::new();
         let mut costs = Vec::new();
         let mut dma_requests = Vec::new();
@@ -501,7 +503,7 @@ impl crate::Bus for SystemBus {
 
     fn tick_peripherals(&mut self) -> Vec<u32> {
         let (interrupts, _costs, dma_requests) = self.tick_peripherals_with_costs();
-        
+
         // Execute DMA requests
         if !dma_requests.is_empty() {
             let _ = self.execute_dma(&dma_requests);
