@@ -6,11 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Refactored
-- **Multi-Architecture Support**:
-    - **Modular CPU**: Decoupled `CortexM` from the generic `Cpu` trait, moving implementation to a dedicated module.
-    - **Generic Bus**: Removed architecture-specific interrupt logic from `SystemBus`, enabling cleaner support for future architectures like RISC-V.
-    - **Interrupt Dispatch**: Implemented `explicit_irqs` in `PeripheralTickResult`, allowing peripherals to trigger specific interrupts directly.
+### Fixed
+- **Instruction Set Coverage**:
+    - **Thumb-2 Data Processing**: Fixed `thumb_expand_imm` logic for bitmask expansion (XYXY patterns).
+    - **Memory Access**: Standardized `F8xx` block handling for T3/T4 variants, including signed 8-bit offsets, pre/post-indexing, and writeback.
+    - **Shifted Registers**: Implemented full barrel shifter logic for data-processing instructions (LSL, LSR, ASR, ROR).
+    - **Control Flow**: Added support for 16-bit `CBZ` and `CBNZ` branch instructions.
+    - **Hints**: Added catch-all `NOP` for hint and `IT` block instructions (`0xBFxx`) to prevent crashes in HAL-heavy code.
+- **Peripherals**:
+    - **UART**: Completed status register implementation with `TXE` (Transmit Empty) and `TC` (Transmission Complete) flags to support blocking HAL drivers.
+
+### Added
+- **ISA Extensions**:
+    - **Misc Thumb-2**: Implemented `CLZ` (Count Leading Zeros) instruction.
+    - **Instruction Decoder**: Enhanced 32-bit Thumb-2 instruction reassembly and opcode extraction for cleaner extension support.
 
 ### Added
 - **RISC-V Support**:
@@ -39,14 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.0] - 2026-02-04
 
 ### Added
-- **Testing Infrastructure**: 
+- **Testing Infrastructure**:
     - **Test Script Schema (YAML)**: Versioned schema for defining firmware tests with inputs (ELF/System), limits (steps/time), and assertions (UART contents, stop reasons).
     - **CI Regression Gates**: Enforced workspace-wide testing and linting in GitHub Actions.
     - **Pre-Release Verification**: Automated regression suite execution on release tags and PRs.
 - **CI Automation**:
     - Composite GitHub Action wrapper: `.github/actions/labwired-test`.
     - CI-ready example scripts under `examples/ci/`.
-- **Documentation**: 
+- **Documentation**:
     - Updated `README.md` to reflect real-world division firmware behavior and IPS reporting.
     - Updated `plan.md` Iteration 10 with implementation details for modular observability.
 
@@ -66,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **PerformanceMetrics**: Thread-safe instruction and cycle tracking using atomic counters.
     - **Real-Time IPS**: CLI reports simulation speed (Instructions Per Second) and progress updates.
 - **Modularity**: Decoupled introspection tools from the core execution engine, enabling zero-overhead simulation when observers are detached.
-- **Tests**: 
+- **Tests**:
     - **test_metrics_collection**: Verified cycle accuracy for 16-bit and 32-bit (BL) instructions.
 
 ## [0.7.0] - 2026-02-03
@@ -143,10 +152,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System**: Declarative hardware configuration via **System Descriptors**:
     - **Chip Descriptors**: Define SoC architecture (Flash/RAM mapping, Peripheral offsets).
     - **System Manifest**: Describe board-level wiring and external component stubs.
-- **Peripherals**: 
+- **Peripherals**:
     - Full **SysTick** timer implementation (`0xE000_E010`).
     - **StubPeripheral** for functional sensor and device modeling.
-- **Core**: 
+- **Core**:
     - **Vector Table Boot**: Automatic loading of initial SP and PC from address `0x0`.
     - **Exception Lifecycle**: Architectural stacking and unstacking for hardware interrupts.
     - **Dynamic Bus**: Refactored `SystemBus` to support pluggable, manifest-defined components.

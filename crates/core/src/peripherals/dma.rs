@@ -111,13 +111,13 @@ impl Peripheral for Dma1 {
                 // 0: Read from peripheral, write to memory
                 // 1: Read from memory, write to peripheral
                 let dir_bit = (chan.ccr >> 4) & 1;
-                
+
                 // For a single tick, we transfer one item?
                 // STM32 DMA can be very fast, but 1 byte per tick is a good start.
-                
+
                 // Note: Simplified logic assumes 8-bit transfers for now.
                 // In reality, PSIZE/MSIZE determine 8/16/32 bit.
-                
+
                 if dir_bit == 1 {
                     // Memory to Peripheral
                     dma_requests.push(DmaRequest {
@@ -127,10 +127,10 @@ impl Peripheral for Dma1 {
                     });
                     // Wait, our DmaRequest doesn't support "Read then Write".
                     // It's either Read OR Write.
-                    // For a real DMA, it's a two-stage process. 
-                    // To keep it simple in one tick, we'll assume we know the value? 
+                    // For a real DMA, it's a two-stage process.
+                    // To keep it simple in one tick, we'll assume we know the value?
                     // No, that's what buses are for.
-                    
+
                     // Let's refine DmaRequest: maybe we need a way to store the read value.
                     // For now, let's just implement Memory-to-Memory manually for testing.
                 } else {
@@ -140,25 +140,30 @@ impl Peripheral for Dma1 {
                     if (chan.ccr & (1 << 14)) != 0 {
                         // MEM2MEM mode
                         // We need to read from CPAR and write to CMAR (or vice versa depending on DIR?)
-                        // Spec: MEM2MEM=1, DIR=1 (Memory to Memory). 
+                        // Spec: MEM2MEM=1, DIR=1 (Memory to Memory).
                         // Actually, in MEM2MEM, DIR is usually ignored or determines src/dst.
-                        
+
                         // Let's just implement a fake write for now to verify the plumbing.
                         dma_requests.push(DmaRequest {
                             addr: chan.cmar as u64,
                             val: 0x42, // Dummy value
                             direction: DmaDirection::Write,
                         });
-                        
+
                         chan.cndtr -= 1;
-                        if (chan.ccr & (1 << 7)) != 0 { chan.cmar += 1; } // MINC
-                        if (chan.ccr & (1 << 6)) != 0 { chan.cpar += 1; } // PINC
-                        
+                        if (chan.ccr & (1 << 7)) != 0 {
+                            chan.cmar += 1;
+                        } // MINC
+                        if (chan.ccr & (1 << 6)) != 0 {
+                            chan.cpar += 1;
+                        } // PINC
+
                         if chan.cndtr == 0 {
                             chan.active = false;
                             // Set TCIF (Transfer Complete Interrupt Flag) in ISR
                             self.isr |= 1 << (i * 4 + 1);
-                            if (chan.ccr & (1 << 1)) != 0 { // TCIE
+                            if (chan.ccr & (1 << 1)) != 0 {
+                                // TCIE
                                 irq = true;
                             }
                         }

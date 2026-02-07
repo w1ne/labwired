@@ -6,7 +6,7 @@ LabWired supports interactive debugging using the **Debug Adapter Protocol (DAP)
 
 ### 1. Prerequisites
 - **LabWired DAP Server**: Build the server using `cargo build -p labwired-dap`.
-- **LabWired VS Code Extension**: 
+- **LabWired VS Code Extension**:
   - Navigate to `editors/vscode`.
   - Run `npm install && npm run compile`.
   - Open the `editors/vscode` folder in a new VS Code window and press `F5` to launch the extension.

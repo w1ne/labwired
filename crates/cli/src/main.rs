@@ -382,10 +382,22 @@ fn run_interactive(cli: Cli) -> ExitCode {
     let metrics = std::sync::Arc::new(labwired_core::metrics::PerformanceMetrics::new());
 
     let cpu_arch = if let Some(sys_path) = &system_path {
-         match labwired_config::ChipDescriptor::from_file(sys_path) {
-            Ok(c) => c.arch,
+        match labwired_config::SystemManifest::from_file(sys_path) {
+            Ok(manifest) => {
+                let chip_path = sys_path
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join(&manifest.chip);
+                match labwired_config::ChipDescriptor::from_file(&chip_path) {
+                    Ok(c) => c.arch,
+                    Err(e) => {
+                        tracing::error!("Failed to parse chip descriptor: {:#}", e);
+                        return ExitCode::from(EXIT_CONFIG_ERROR);
+                    }
+                }
+            }
             Err(e) => {
-                tracing::error!("Failed to parse chip descriptor: {}", e);
+                tracing::error!("Failed to parse system manifest: {:#}", e);
                 return ExitCode::from(EXIT_CONFIG_ERROR);
             }
         }
@@ -395,16 +407,20 @@ fn run_interactive(cli: Cli) -> ExitCode {
     };
 
     if program.arch != labwired_core::Arch::Unknown {
-         // Map core::Arch to config::Arch for comparison
-         let prog_arch = match program.arch {
-             labwired_core::Arch::Arm => labwired_config::Arch::Arm,
-             labwired_core::Arch::RiscV => labwired_config::Arch::RiscV,
-             _ => labwired_config::Arch::Unknown,
-         };
-         
-         if prog_arch != cpu_arch {
-             tracing::warn!("Architecture Mismatch! Config expects {:?}, but ELF is {:?}", cpu_arch, prog_arch);
-         }
+        // Map core::Arch to config::Arch for comparison
+        let prog_arch = match program.arch {
+            labwired_core::Arch::Arm => labwired_config::Arch::Arm,
+            labwired_core::Arch::RiscV => labwired_config::Arch::RiscV,
+            _ => labwired_config::Arch::Unknown,
+        };
+
+        if prog_arch != cpu_arch {
+            tracing::warn!(
+                "Architecture Mismatch! Config expects {:?}, but ELF is {:?}",
+                cpu_arch,
+                prog_arch
+            );
+        }
     }
 
     match cpu_arch {
@@ -426,7 +442,7 @@ fn run_interactive_arm(
     let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
     let mut machine = labwired_core::Machine::new(cpu, bus);
     machine.observers.push(metrics.clone());
-    
+
     if let Err(e) = machine.load_firmware(&program) {
         tracing::error!("Failed to load firmware into memory: {}", e);
         return ExitCode::from(EXIT_RUNTIME_ERROR);
@@ -451,12 +467,12 @@ fn run_interactive_arm(
     let result = run_simulation_loop(&cli, &mut machine, &metrics);
 
     if let Some(path) = &cli.snapshot {
-        // Need to reconstruct full paths or pass them? 
+        // Need to reconstruct full paths or pass them?
         // cli.firmware is Option<PathBuf>, but checking run_interactive, it ensures firmware is set.
         // But run_interactive passed `program` not paths.
         // Creating cli passes ownership. `cli` has `firmware`.
         // `cli.system` is `Option<PathBuf>`.
-        
+
         let firmware_path = cli.firmware.as_ref().expect("Firmware path required");
         let system_path = cli.system.as_ref();
 
@@ -497,13 +513,14 @@ fn run_interactive_riscv(
     info!("Starting Simulation (RISC-V)...");
     info!(
         "Initial PC: {:#x}, SP: {:#x}",
-        machine.cpu.pc, machine.cpu.x[2] // SP is x2 in RISC-V convention
+        machine.cpu.pc,
+        machine.cpu.x[2] // SP is x2 in RISC-V convention
     );
 
     if cli.gdb.is_some() {
         warn!("GDB server not yet supported for RISC-V. Ignoring --gdb.");
     }
-    
+
     if cli.snapshot.is_some() {
         warn!("Snapshots not yet supported for RISC-V. Ignoring --snapshot.");
     }
@@ -532,7 +549,11 @@ fn run_simulation_loop<C: labwired_core::Cpu>(
     info!("Running for {} steps...", cli.max_steps);
     for step in 0..cli.max_steps {
         if !cli.breakpoint.is_empty() && cli.breakpoint.contains(&machine.cpu.get_pc()) {
-            info!("Breakpoint hit at PC={:#x} (step={})", machine.cpu.get_pc(), step);
+            info!(
+                "Breakpoint hit at PC={:#x} (step={})",
+                machine.cpu.get_pc(),
+                step
+            );
             stop_reason = StopReason::Halt;
             steps_executed = step as u64;
             break;
@@ -561,7 +582,7 @@ fn run_simulation_loop<C: labwired_core::Cpu>(
             }
         }
     }
-    
+
     LoopResult {
         stop_reason,
         steps_executed,

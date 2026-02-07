@@ -5,7 +5,7 @@
 # See the LICENSE file in the project root for full license information.
 
 name: "stm32f103c8"
-arch: "cortex-m3"
+arch: "arm"
 flash:
   base: 0x00000000
   size: "1MB"

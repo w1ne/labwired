@@ -21,7 +21,7 @@ sequenceDiagram
     participant B as SystemBus
     participant D as DMA Peripheral
     participant R as RAM / Peripheral
-    
+
     B->>D: tick()
     D-->>B: Vec<DmaRequest>
     loop Each Request

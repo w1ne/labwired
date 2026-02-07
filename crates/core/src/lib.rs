@@ -81,7 +81,6 @@ pub trait Cpu {
     fn set_sp(&mut self, val: u32);
     fn set_exception_pending(&mut self, exception_num: u32);
 
-
     // Debug Access
     fn get_register(&self, id: u8) -> u32;
     fn set_register(&mut self, id: u8, val: u32);
