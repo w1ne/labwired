@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod tests {
     use crate::cpu::CortexM;
-    use crate::decoder::{self, Instruction};
+    use crate::decoder::arm::{self as decoder, Instruction};
     use crate::peripherals::nvic::NvicState;
     use crate::{Bus, Cpu, Machine, Peripheral, SimResult};
     use labwired_config::{ChipDescriptor, MemoryRange, PeripheralConfig, SystemManifest};

@@ -56,7 +56,7 @@ pub struct PeripheralTickResult {
 pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
     fn on_simulation_start(&self) {}
     fn on_simulation_stop(&self) {}
-    fn on_step_start(&self, _pc: u32, _opcode: u16) {}
+    fn on_step_start(&self, _pc: u32, _opcode: u32) {}
     fn on_step_end(&self, _cycles: u32) {}
     fn on_peripheral_tick(&self, _name: &str, _cycles: u32) {}
 }

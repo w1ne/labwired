@@ -16,7 +16,7 @@ pub struct MachineSnapshot {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CpuSnapshot {
-    pub registers: [u32; 16],
+    pub registers: Vec<u32>,
     pub xpsr: u32,
     pub primask: bool,
     pub pending_exceptions: u32,

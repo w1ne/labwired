@@ -4,7 +4,7 @@
 // This software is released under the MIT License.
 // See the LICENSE file in the project root for full license information.
 
-use crate::decoder::{self, Instruction};
+use crate::decoder::arm::{self, decode_thumb_16, Instruction};
 use crate::{Bus, Cpu, SimResult, SimulationObserver};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -211,7 +211,7 @@ impl Cpu for CortexM {
 
     fn snapshot(&self) -> crate::snapshot::CpuSnapshot {
         crate::snapshot::CpuSnapshot {
-            registers: [
+            registers: vec![
                 self.r0, self.r1, self.r2, self.r3, self.r4, self.r5, self.r6, self.r7, self.r8,
                 self.r9, self.r10, self.r11, self.r12, self.sp, self.lr, self.pc,
             ],
@@ -274,11 +274,11 @@ impl Cpu for CortexM {
         let opcode = bus.read_u16(fetch_pc as u64)?;
 
         for observer in observers {
-            observer.on_step_start(self.pc, opcode);
+            observer.on_step_start(self.pc, opcode as u32);
         }
 
         // Decode
-        let instruction = decoder::decode_thumb_16(opcode);
+        let instruction = decode_thumb_16(opcode);
 
         tracing::debug!(
             "PC={:#x}, Opcode={:#04x}, Instr={:?}",
