@@ -1203,8 +1203,12 @@ mod tests {
         let snap = machine.snapshot();
 
         // Verify CPU
-        assert_eq!(snap.cpu.registers[0], 42);
-        assert_eq!(snap.cpu.registers[15], 0x0800_0000); // PC is R15
+        if let crate::snapshot::CpuSnapshot::Arm(s) = &snap.cpu {
+            assert_eq!(s.registers[0], 42);
+            assert_eq!(s.registers[15], 0x0800_0000); // PC is R15
+        } else {
+            panic!("Expected ARM snapshot");
+        }
 
         // Verify Peripheral via JSON Value inspection
         // snap.peripherals is HashMap<String, serde_json::Value>

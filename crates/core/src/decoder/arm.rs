@@ -87,6 +87,17 @@ pub enum Instruction {
     Rbit { rd: u8, rm: u8 },  // RBIT Rd, Rm
     Rev { rd: u8, rm: u8 },   // REV Rd, Rm
     Rev16 { rd: u8, rm: u8 }, // REV16 Rd, Rm
+    RevSh { rd: u8, rm: u8 }, // REVSH Rd, Rm
+
+    DataProc32 {
+        op: u8,
+        rn: u8,
+        rd: u8,
+        rm: u8,
+        imm5: u8,
+        shift_type: u8,
+        set_flags: bool,
+    },
 
     Unknown(u16),
     // Intermediate state for 32-bit instruction (First half)
@@ -415,9 +426,201 @@ pub fn decode_thumb_16(opcode: u16) -> Instruction {
     Instruction::Unknown(opcode)
 }
 
+
+
+/// Decodes a 32-bit Thumb instruction (requires two 16-bit halfwords)
+pub fn decode_thumb_32(h1: u16, h2: u16) -> Instruction {
+    // 32-bit Thumb instruction encoding:
+    // First Halfword: 1110 1... or 1111 ...
+
+    // Data processing (modified immediate) / Plain binary immediate
+    // F000-F0FF (approx)
+
+    // ... (Existing Bitfield/Misc logic) ...
+
+    // Data Processing (Reg) - For LSL, LSR, ASR, ROR, etc
+    // 1110 1010 ... (EA..)
+    if (h1 & 0xFF00) == 0xEA00 && (h2 & 0x8000) == 0 {
+        let op = ((h1 >> 5) & 0xF) as u8;
+        let s = ((h1 >> 4) & 0x1) != 0;
+        let rn = (h1 & 0xF) as u8;
+        let rd = ((h2 >> 8) & 0xF) as u8;
+        let rm = (h2 & 0xF) as u8;
+
+        let imm3 = ((h2 >> 12) & 0x7) as u8;
+        let imm2 = ((h2 >> 6) & 0x3) as u8;
+        let imm5 = (imm3 << 2) | imm2;
+        let shift_type = ((h2 >> 4) & 0x3) as u8;
+
+        return Instruction::DataProc32 {
+            op,
+            rn,
+            rd,
+            rm,
+            imm5,
+            shift_type,
+            set_flags: s,
+        };
+    }
+
+    // 1. Bitfield and Miscellaneous Instructions
+    // Encoding: 1111 0011 0110 ... => F36x ...
+    if (h1 & 0xFFF0) == 0xF360 {
+        let _op = (h1 & 0xF) as u8;
+        let rn = (h1 & 0xF) as u8;
+        let rd = ((h2 >> 8) & 0xF) as u8;
+
+        // BFI / BFC
+        if (h2 & 0x8000) == 0 {
+             let lsbbb = ((h2 >> 12) & 0x7) << 2 | ((h2 >> 6) & 0x3);
+             // Encoding of msb in h2 is mmmmm
+             let msb = (h2 & 0x1F) as u8;
+             let lsb = lsbbb as u8; // 5 bits
+
+             // Width = msb - lsb + 1
+             // If msb < lsb, it's UNPREDICTABLE (or handled as 0 length?)
+             if msb >= lsb {
+                 let width = msb - lsb + 1;
+                 if rn == 0xF {
+                     return Instruction::Bfc { rd, lsb, width };
+                 } else {
+                     return Instruction::Bfi { rd, rn, lsb, width };
+                 }
+             }
+        }
+    }
+
+    // SBFX / UBFX
+    if (h1 & 0xFFF0) == 0xF340 || (h1 & 0xFFF0) == 0xF3C0 {
+        let is_unsigned = (h1 & 0x0080) != 0; // F3C0 vs F340 (0x0080 bit)
+        let rn = (h1 & 0xF) as u8;
+        let rd = ((h2 >> 8) & 0xF) as u8;
+
+        let lsb = (  ((h2 >> 12) & 0x7) << 2 | ((h2 >> 6) & 0x3) ) as u8; // 5 bits
+        let width_m1 = (h2 & 0x1F) as u8;
+        let width = width_m1 + 1;
+
+        if is_unsigned {
+             return Instruction::Ubfx { rd, rn, lsb, width };
+        } else {
+             return Instruction::Sbfx { rd, rn, lsb, width };
+        }
+    }
+
+    // Misc Instructions: REV, REV16, REVSH, CLZ, RBIT
+    // All start with 1111 1010 ... (FA..)
+    if (h1 & 0xFF80) == 0xFA80 {
+        let rn = (h1 & 0xF) as u8; // Rm in decoding usually
+        let rm = rn; // Encoding uses Rm in H1
+
+        let rd = ((h2 >> 8) & 0xF) as u8;
+
+        if (h1 & 0xFFF0) == 0xFA90 {
+            // FA9m
+            let op = (h2 >> 4) & 0xF; // 1000=8, 1001=9, 1010=A, 1011=B
+            match op {
+                0x8 => return Instruction::Rev { rd, rm },
+                0x9 => return Instruction::Rev16 { rd, rm },
+                0xA => return Instruction::Rbit { rd, rm },
+                0xB => return Instruction::RevSh { rd, rm },
+                0xC => return Instruction::Clz { rd, rm },
+                _ => {}
+            }
+        }
+    }
+
+    Instruction::Unknown(h1) // Placeholder to make it compile with existing Unknown(u16)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ... (existing tests)
+
+    #[test]
+    fn test_decode_bfi() {
+        // BFI R0, R1, #4, #12
+        // Encoding: T1
+        // h1 = F361 (Rn=1)
+        // h2: 0ii0 dddd iiim mmmm
+        // i=0, d=0 (Rd=0)
+        // imm3=1 (4>>2), imm2=0 (4&3) -> lsb=4
+        // msb = 4+12-1 = 15 = 01111
+        // h2 = 0000 0000 0001 01111 -> 0x010F ??
+        // No.
+        // imm3 is bits 14:12. imm2 bits 7:6.
+        // imm3=1 -> 001. d=0 -> 0000.
+        // h2 top: 0 001 0 0000 -> 0x10.
+        // imm2=0 -> 00. msb=15 -> 01111.
+        // h2 bot: 00 01111 -> 0x0F.
+        // h2 = 0x100F.
+
+        // Wait, decode logic:
+        // lsb = ((h2 >> 12) & 0x7) << 2 | ((h2 >> 6) & 0x3);
+        // (0x1<<2)|0 = 4. Correct.
+        // msb = h2 & 0x1F = 0xF = 15. Correct.
+
+        assert_eq!(
+            decode_thumb_32(0xF361, 0x100F),
+            Instruction::Bfi {
+                rd: 0,
+                rn: 1,
+                lsb: 4,
+                width: 12
+            }
+        );
+    }
+
+    #[test]
+    fn test_decode_bfc() {
+        // BFC R2, #8, #16
+        // Rn=15 (0xF) -> h1 = F36F
+        // lsb=8 -> imm3=2 (8>>2), imm2=0.
+        // width=16 -> msb = 8+16-1 = 23 (0x17).
+        // imm3=2 -> 010. d=2 -> 0010.
+        // h2 top: 0 010 0 0010 -> 0x22..
+        // imm2=0 -> 00. msb=23 -> 10111.
+        // h2 bot: 00 10111 -> 0x17.
+        // h2 = 0x2217.
+
+        assert_eq!(
+            decode_thumb_32(0xF36F, 0x2217),
+            Instruction::Bfc {
+                rd: 2,
+                lsb: 8,
+                width: 16
+            }
+        );
+    }
+
+    #[test]
+    fn test_decode_ubfx() {
+        // UBFX R3, R4, #2, #5
+        // lsb=2 -> imm3=0, imm2=2.
+        // width=5 -> widthm1=4.
+        // h2 = 0x0384 (bits 7:6 = 10 -> imm2=2)
+        assert_eq!(
+            decode_thumb_32(0xF3C4, 0x0384),
+            Instruction::Ubfx {
+                rd: 3,
+                rn: 4,
+                lsb: 2,
+                width: 5
+            }
+        );
+    }
+
+    #[test]
+    fn test_decode_misc_rev() {
+        // REV R0, R2 (using F081 -> Rd=0)
+        assert_eq!(
+            decode_thumb_32(0xFA92, 0xF081),
+            Instruction::Rev { rd: 0, rm: 2 }
+        );
+    }
+
+
 
     #[test]
     fn test_decode_mov_cmp_add_sub_imm8() {
