@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Architecture**: Initial support for RISC-V (RV32I) Base Integer Instruction Set.
     - **Decoder**: Full RV32I instruction decoding including branches, loads, stores, and arithmetic.
     - **CPU Model**: `RiscV` struct implementing the generic `Cpu` trait with 32 general-purpose registers (x0-x31).
+    - **GDB Support**: Refactored `labwired-gdbstub` into a generic multi-architecture implementation and enabled GDB server for RISC-V targets.
 
 ## [0.10.0] - 2026-02-06
 

@@ -278,9 +278,9 @@ This section translates the business research roadmap (“The Strategic Horizon 
 ## Iteration 13: GDB Support (Remote Serial Protocol) (In Progress)
 **Objective**: Allow GDB to connect to the simulation for command-line debugging and integration with other IDEs.
 
-- [ ] Implement GDB RSP server using `gdbstub`.
-- [ ] Add `--gdb` flag to LabWired CLI.
-- [ ] Support register and memory access via GDB.
+- [x] Implement GDB RSP server using `gdbstub`.
+- [x] Add `--gdb` flag to LabWired CLI.
+- [x] Support register and memory access via GDB (ARM & RISC-V).
 
 ## Iteration 13.5: Multi-Architecture Foundation (Completed)
 **Objective**: Decouple the core simulation engine from Cortex-M specifics to support future architectures (e.g., RISC-V).

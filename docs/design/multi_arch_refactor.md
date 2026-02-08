@@ -37,3 +37,6 @@ LabWired core is currently tightly coupled to ARM Cortex-M architecture, specifi
 **File:** `crates/cli/src/main.rs`, `crates/core/tests.rs`
 
 - Update `run_interactive` and `run_test` to explicitly call the Cortex-M configuration logic before creating the `Machine`.
+
+## Status: Completed
+The multi-architecture refactor has been successfully implemented, enabling support for RISC-V alongside the original ARM Cortex-M architecture. This has been verified through unit tests and successful integration of the RISC-V GDB stub.
