@@ -71,6 +71,7 @@ impl CortexM {
             13 => self.sp,
             14 => self.lr,
             15 => self.pc,
+            16 => self.xpsr,
             _ => 0,
         }
     }
@@ -93,6 +94,7 @@ impl CortexM {
             13 => self.sp = val,
             14 => self.lr = val,
             15 => self.pc = val,
+            16 => self.xpsr = val,
             _ => {}
         }
     }

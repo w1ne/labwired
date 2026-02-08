@@ -517,8 +517,14 @@ fn run_interactive_riscv(
         machine.cpu.x[2] // SP is x2 in RISC-V convention
     );
 
-    if cli.gdb.is_some() {
-        warn!("GDB server not yet supported for RISC-V. Ignoring --gdb.");
+    // Check if GDB server is requested
+    if let Some(port) = cli.gdb {
+        let server = labwired_gdbstub::GdbServer::new(port);
+        if let Err(e) = server.run(machine) {
+            error!("GDB server failed: {}", e);
+            return ExitCode::from(EXIT_RUNTIME_ERROR);
+        }
+        return ExitCode::from(EXIT_PASS);
     }
 
     if cli.snapshot.is_some() {

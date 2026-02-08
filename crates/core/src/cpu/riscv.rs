@@ -280,6 +280,8 @@ impl Cpu for RiscV {
     fn get_register(&self, id: u8) -> u32 {
         if id < 32 {
             self.read_reg(id)
+        } else if id == 32 {
+            self.pc
         } else {
             0
         }
@@ -287,6 +289,8 @@ impl Cpu for RiscV {
     fn set_register(&mut self, id: u8, val: u32) {
         if id < 32 {
             self.write_reg(id, val);
+        } else if id == 32 {
+            self.pc = val;
         }
     }
 
