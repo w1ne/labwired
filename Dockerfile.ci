@@ -1,3 +1,9 @@
+# LabWired - Firmware Simulation Platform
+# Copyright (C) 2026 Andrii Shylenko
+#
+# This software is released under the MIT License.
+# See the LICENSE file in the project root for full license information.
+
 # Multi-stage Dockerfile optimized for CI/CD usage
 # Produces a minimal image containing only the labwired CLI binary
 

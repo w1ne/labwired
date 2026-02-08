@@ -5,5 +5,10 @@ Cargo.lock
 .vscode
 .DS_Store
 node_modules
-out
+/out_check*
 *.vsix
+*.disasm
+*.bin
+tests/scripts/uart_check.yaml
+editors/vscode/out
+/out/

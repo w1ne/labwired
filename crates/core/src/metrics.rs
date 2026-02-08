@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use crate::SimulationObserver;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -74,7 +80,7 @@ impl SimulationObserver for PerformanceMetrics {
         // Reset counters on each start if needed, or just keep them cumulative
     }
 
-    fn on_step_start(&self, _pc: u32, _opcode: u16) {
+    fn on_step_start(&self, _pc: u32, _opcode: u32) {
         self.instruction_count.fetch_add(1, Ordering::SeqCst);
     }
 

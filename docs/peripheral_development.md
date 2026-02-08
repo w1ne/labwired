@@ -15,9 +15,9 @@ pub trait Peripheral: std::fmt::Debug + Send {
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
 
     /// Progress the peripheral state by one "tick"
-    /// Returns any IRQs generated and cycles consumed
+    /// Returns any IRQs generated, cycles consumed, and any DMA bus requests
     fn tick(&mut self) -> PeripheralTickResult {
-        PeripheralTickResult { irq: false, cycles: 0 }
+        PeripheralTickResult::default()
     }
 
     /// Return a JSON-serializable snapshot of the internal state
@@ -72,7 +72,7 @@ use std::any::Any;
 pub struct TempSensor {
     pub sr: u32, // Status: Bit 0 = Busy, Bit 1 = Data Ready
     pub dr: u32, // Data: Temperature in Celsius
-    
+
     #[serde(skip)]
     update_interval: u32,
     #[serde(skip)]
@@ -104,7 +104,7 @@ impl Peripheral for TempSensor {
     fn tick(&mut self) -> PeripheralTickResult {
         self.ticks += 1;
         let mut irq = false;
-        
+
         if self.ticks >= self.update_interval {
             self.ticks = 0;
             self.dr += 1; // Simulate rising temperature
@@ -122,6 +122,38 @@ impl Peripheral for TempSensor {
     fn as_any(&self) -> Option<&dyn Any> { Some(self) }
 }
 ```
+
+## DMA Bus Mastering
+
+If your peripheral needs to perform DMA transfers, it can return `DmaRequest`s from `tick()`.
+
+```rust
+impl Peripheral for MyDmaController {
+    fn tick(&mut self) -> PeripheralTickResult {
+        let mut dma_requests = Vec::new();
+        if self.active {
+            dma_requests.push(DmaRequest {
+                addr: self.src_addr as u64,
+                val: 0, // Not used for Read
+                direction: DmaDirection::Read,
+            });
+            dma_requests.push(DmaRequest {
+                addr: self.dest_addr as u64,
+                val: 0x42, // Value to write
+                direction: DmaDirection::Write,
+            });
+        }
+        PeripheralTickResult {
+            irq: false,
+            cycles: 1,
+            dma_requests,
+        }
+    }
+}
+```
+
+> [!NOTE]
+> The `SystemBus` executes these requests after the peripheral tick phase.
 
 ## Integrating Your Peripheral
 

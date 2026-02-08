@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use anyhow::{anyhow, Context, Result};
 use goblin::elf::program_header::PT_LOAD;
 use goblin::elf::Elf;
@@ -14,7 +20,16 @@ pub fn load_elf(path: &Path) -> Result<ProgramImage> {
 
     info!("ELF Entry Point: {:#x}", elf.entry);
 
-    let mut program_image = ProgramImage::new(elf.entry);
+    let arch = match elf.header.e_machine {
+        goblin::elf::header::EM_ARM => labwired_core::Arch::Arm,
+        goblin::elf::header::EM_RISCV => labwired_core::Arch::RiscV,
+        _ => {
+            warn!("Unknown ELF machine type: {}", elf.header.e_machine);
+            labwired_core::Arch::Unknown
+        }
+    };
+
+    let mut program_image = ProgramImage::new(elf.entry, arch);
 
     for ph in elf.program_headers {
         if ph.p_type == PT_LOAD {
@@ -203,9 +218,9 @@ mod tests {
         let provider = SymbolProvider::new(&elf_path).expect("Failed to create SymbolProvider");
 
         // Try to resolve a location in main.rs
-        // Note: Line 11 is 'let a: u32 = 100;'
-        let pc = provider.location_to_pc("main.rs", 11);
-        assert!(pc.is_some(), "Should resolve main.rs:11 to a PC");
+        // Note: Line 14 is 'fn main() -> ! {'
+        let pc = provider.location_to_pc("main.rs", 14);
+        assert!(pc.is_some(), "Should resolve main.rs:14 to a PC");
 
         let addr = pc.unwrap();
         assert!(addr > 0, "Resolved address should be valid");
@@ -215,6 +230,6 @@ mod tests {
             .lookup(addr)
             .expect("Lookup failed for resolved PC");
         assert!(loc.file.ends_with("main.rs"));
-        assert_eq!(loc.line, Some(11));
+        assert_eq!(loc.line, Some(14));
     }
 }

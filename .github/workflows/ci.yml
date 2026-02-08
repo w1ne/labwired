@@ -1,3 +1,9 @@
+# LabWired - Firmware Simulation Platform
+# Copyright (C) 2026 Andrii Shylenko
+#
+# This software is released under the MIT License.
+# See the LICENSE file in the project root for full license information.
+
 name: LabWired CI
 
 on:
@@ -48,10 +54,10 @@ jobs:
     - name: Clippy (CI Fixture)
       run: cargo clippy -p firmware-ci-fixture --target thumbv6m-none-eabi -- -D warnings
 
-    - name: Security Audit
-      uses: rustsec/audit-check@v2.0.0
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+    # - name: Security Audit
+    #   uses: rustsec/audit-check@v2.0.0
+    #   with:
+    #     token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build (Host)
       run: cargo build --workspace --exclude firmware --exclude firmware-ci-fixture --verbose

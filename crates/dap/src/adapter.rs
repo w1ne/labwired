@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use anyhow::{anyhow, Result};
 use labwired_core::{cpu::CortexM, DebugControl, Machine, StopReason};
 use labwired_loader::SymbolProvider;
@@ -27,7 +33,9 @@ impl LabwiredAdapter {
         // labwired-loader load_elf takes &Path
         let image = labwired_loader::load_elf(&path)?;
 
-        let mut machine = Machine::<CortexM>::new();
+        let mut bus = labwired_core::bus::SystemBus::new();
+        let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+        let mut machine = Machine::new(cpu, bus);
         machine
             .load_firmware(&image)
             .map_err(|e| anyhow!("Failed to load firmware: {:?}", e))?;

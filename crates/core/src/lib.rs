@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 pub mod bus;
 pub mod cpu;
 pub mod decoder;
@@ -8,12 +14,19 @@ pub mod multi_core;
 pub mod peripherals;
 pub mod signals;
 pub mod snapshot;
+pub mod system;
 
 use std::any::Any;
-use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
 mod tests;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Arch {
+    Arm,
+    RiscV,
+    Unknown,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimulationError {
@@ -26,23 +39,38 @@ pub enum SimulationError {
 pub type SimResult<T> = Result<T, SimulationError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DmaDirection {
+    Read,
+    Write,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DmaRequest {
+    pub addr: u64,
+    pub val: u8,
+    pub direction: DmaDirection,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct PeripheralTickResult {
     pub irq: bool,
     pub cycles: u32,
+    pub dma_requests: Vec<DmaRequest>,
+    pub explicit_irqs: Vec<u32>,
 }
 
 /// Trait for observing simulation events in a modular way.
 pub trait SimulationObserver: std::fmt::Debug + Send + Sync {
     fn on_simulation_start(&self) {}
     fn on_simulation_stop(&self) {}
-    fn on_step_start(&self, _pc: u32, _opcode: u16) {}
+    fn on_step_start(&self, _pc: u32, _opcode: u32) {}
     fn on_step_end(&self, _cycles: u32) {}
     fn on_peripheral_tick(&self, _name: &str, _cycles: u32) {}
 }
 
 /// Trait representing a CPU architecture
 pub trait Cpu {
-    fn reset(&mut self);
+    fn reset(&mut self, bus: &mut dyn Bus) -> SimResult<()>;
     fn step(
         &mut self,
         bus: &mut dyn Bus,
@@ -52,9 +80,6 @@ pub trait Cpu {
     fn get_pc(&self) -> u32;
     fn set_sp(&mut self, val: u32);
     fn set_exception_pending(&mut self, exception_num: u32);
-    fn get_vtor(&self) -> u32;
-    fn set_vtor(&mut self, val: u32);
-    fn set_shared_vtor(&mut self, vtor: Arc<AtomicU32>);
 
     // Debug Access
     fn get_register(&self, id: u8) -> u32;
@@ -67,10 +92,7 @@ pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
     fn tick(&mut self) -> PeripheralTickResult {
-        PeripheralTickResult {
-            irq: false,
-            cycles: 0,
-        }
+        PeripheralTickResult::default()
     }
     fn as_any(&self) -> Option<&dyn Any> {
         None
@@ -88,6 +110,7 @@ pub trait Bus {
     fn read_u8(&self, addr: u64) -> SimResult<u8>;
     fn write_u8(&mut self, addr: u64, value: u8) -> SimResult<()>;
     fn tick_peripherals(&mut self) -> Vec<u32>; // Returns list of pending exception numbers
+    fn execute_dma(&mut self, requests: &[DmaRequest]) -> SimResult<()>;
 
     fn read_u16(&self, addr: u64) -> SimResult<u16> {
         let b0 = self.read_u8(addr)? as u16;
@@ -157,78 +180,14 @@ pub struct Machine<C: Cpu> {
     pub breakpoints: HashSet<u32>,
 }
 
-impl<C: Cpu + Default> Machine<C> {
-    pub fn new() -> Self {
-        Self::with_bus(bus::SystemBus::new())
-    }
-
-    /// Construct a machine around an existing bus, and ensure core system peripherals
-    /// (SCB + NVIC) are installed and wired up (shared VTOR + NVIC pending state).
-    pub fn with_bus(mut bus: bus::SystemBus) -> Self {
-        let vtor = Arc::new(AtomicU32::new(0));
-        let nvic_state = Arc::new(peripherals::nvic::NvicState::default());
-
-        let mut cpu = C::default();
-        cpu.set_shared_vtor(vtor.clone());
-
-        bus.nvic = Some(nvic_state.clone());
-
-        // Ensure SCB exists (VTOR relocation)
-        let scb = peripherals::scb::Scb::new(vtor);
-        if let Some(p) = bus
-            .peripherals
-            .iter_mut()
-            .find(|p| p.name == "scb" || p.base == 0xE000_ED00)
-        {
-            p.name = "scb".to_string();
-            p.base = 0xE000_ED00;
-            p.size = 0x40;
-            p.irq = None;
-            p.dev = Box::new(scb);
-        } else {
-            bus.peripherals.push(bus::PeripheralEntry {
-                name: "scb".to_string(),
-                base: 0xE000_ED00,
-                size: 0x40,
-                irq: None,
-                dev: Box::new(scb),
-            });
-        }
-
-        // Ensure NVIC exists (shared pending/enabled state)
-        let nvic = peripherals::nvic::Nvic::new(nvic_state);
-        if let Some(p) = bus
-            .peripherals
-            .iter_mut()
-            .find(|p| p.name == "nvic" || p.base == 0xE000_E100)
-        {
-            p.name = "nvic".to_string();
-            p.base = 0xE000_E100;
-            p.size = 0x400;
-            p.irq = None;
-            p.dev = Box::new(nvic);
-        } else {
-            bus.peripherals.push(bus::PeripheralEntry {
-                name: "nvic".to_string(),
-                base: 0xE000_E100,
-                size: 0x400,
-                irq: None,
-                dev: Box::new(nvic),
-            });
-        }
-
+impl<C: Cpu> Machine<C> {
+    pub fn new(cpu: C, bus: bus::SystemBus) -> Self {
         Self {
             cpu,
             bus,
             observers: Vec::new(),
             breakpoints: HashSet::new(),
         }
-    }
-}
-
-impl<C: Cpu + Default> Default for Machine<C> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -262,24 +221,14 @@ impl<C: Cpu> Machine<C> {
     }
 
     pub fn reset(&mut self) -> SimResult<()> {
-        self.cpu.reset();
-
-        let vtor = self.cpu.get_vtor() as u64;
-        if let Ok(sp) = self.bus.read_u32(vtor) {
-            self.cpu.set_sp(sp);
-        }
-        if let Ok(pc) = self.bus.read_u32(vtor + 4) {
-            self.cpu.set_pc(pc);
-        }
-
-        Ok(())
+        self.cpu.reset(&mut self.bus)
     }
 
     pub fn step(&mut self) -> SimResult<()> {
         let res = self.cpu.step(&mut self.bus, &self.observers);
 
         // Propagate peripherals
-        let (interrupts, costs) = self.bus.tick_peripherals_with_costs();
+        let (interrupts, costs) = self.bus.tick_peripherals_fully();
         for c in costs {
             if let Some(p) = self.bus.peripherals.get(c.index) {
                 for observer in &self.observers {

@@ -282,6 +282,15 @@ This section translates the business research roadmap (“The Strategic Horizon 
 - [ ] Add `--gdb` flag to LabWired CLI.
 - [ ] Support register and memory access via GDB.
 
+## Iteration 13.5: Multi-Architecture Foundation (Completed)
+**Objective**: Decouple the core simulation engine from Cortex-M specifics to support future architectures (e.g., RISC-V).
+
+- [x] **Generic CPU Trait**: Refined `Cpu` trait to be fully architecture-agnostic.
+- [x] **Separated Cortex-M**: Moved `CortexM` implementation to `crates/core/src/cpu/cortex_m.rs`.
+- [x] **Decoupled Peripherals**: Removed architecture-specific interrupt logic (EXTI) from `SystemBus`.
+- [x] **Generic Interrupts**: Implemented `explicit_irqs` in `PeripheralTickResult` for direct NVIC signaling.
+- [x] **System Config**: Created `configure_cortex_m` helper for standardized system setup.
+
 ## Iteration 14: Asset Foundry (AI Modeling)
 **Objective**: Break the peripheral modeling bottleneck by introducing a validated, versioned model pipeline (SVD/PDF → IR → verified codegen → registry).
 

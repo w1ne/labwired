@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -22,7 +28,9 @@ fn test_cli_test_mode_breakpoint_halts_immediately() {
     let fw_abs = std::fs::canonicalize("../../tests/fixtures/uart-ok-thumbv7m.elf").unwrap();
 
     let program = labwired_loader::load_elf(Path::new(fw_abs.to_str().unwrap())).unwrap();
-    let mut machine = labwired_core::Machine::<labwired_core::cpu::CortexM>::new();
+    let mut bus = labwired_core::bus::SystemBus::new();
+    let (cpu, _nvic) = labwired_core::system::cortex_m::configure_cortex_m(&mut bus);
+    let mut machine = labwired_core::Machine::new(cpu, bus);
     machine.load_firmware(&program).unwrap();
     let initial_pc = machine.cpu.pc;
 

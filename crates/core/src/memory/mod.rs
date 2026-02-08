@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -6,17 +12,21 @@ pub struct Segment {
     pub data: Vec<u8>,
 }
 
+use crate::Arch;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramImage {
     pub entry_point: u64,
     pub segments: Vec<Segment>,
+    pub arch: Arch,
 }
 
 impl ProgramImage {
-    pub fn new(entry_point: u64) -> Self {
+    pub fn new(entry_point: u64, arch: Arch) -> Self {
         Self {
             entry_point,
             segments: Vec::new(),
+            arch,
         }
     }
 

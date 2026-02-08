@@ -11,14 +11,14 @@ graph TD
     CLI --> Core[labwired-core]
     Config --> Core
     Loader --> Core
-    
+
     subgraph Core [labwired-core]
         CPU[Cortex-M CPU]
         Bus[System Bus]
         Dec[Decoder]
         Mem[Linear Memory]
         Periphs[Dynamic Peripherals]
-        
+
         CPU --> Dec
         CPU --> Bus
         Bus --> Mem
@@ -54,7 +54,7 @@ Peripherals are integrated via the `Peripheral` trait:
 pub trait Peripheral: std::fmt::Debug + Send {
     fn read(&self, offset: u64) -> SimResult<u8>;
     fn write(&mut self, offset: u64, value: u8) -> SimResult<()>;
-    fn tick(&mut self) -> bool; // Returns true if interrupt is pending
+    fn tick(&mut self) -> PeripheralTickResult; // Returns IRQ status, cycles, and DMA requests
 }
 ```
 
@@ -73,23 +73,27 @@ Represents the processor state.
 
 #### **Decoder (Thumb-2)**
 A stateless module confirming to ARMv7-M Thumb-2 encoding.
-**Supported Instructions (v0.7.0)**:
-- **Control Flow**: `B <offset>`, `Bcc <cond, offset>`, `BL` (32-bit), `BX`.
-- **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`, `MOVW` (32-bit), `MOVT` (32-bit).
-    - **Wide Variants**: `MOV.W`, `MVN.W` (32-bit encoding).
+**Supported Instructions**:
+- **Control Flow**: `B <offset>`, `Bcc <cond, offset>`, `BL` (32-bit), `BX`, `CBZ`, `CBNZ`.
+- **Arithmetic**: `ADD`, `SUB`, `CMP`, `MOV`, `MVN`, `MOVW` (32-bit), `MOVT` (32-bit), `MUL`.
+    - **Wide (32-bit) Variants**: `ADD.W`, `SUB.W`, `ADC.W`, `SBC.W`, `MOV.W`, `MVN.W`, `BIC.W`, `ORN.W`.
+    - **Shifted Register Variants**: Support for 32-bit forms with arbitrary barrel shifter offsets.
     - **Division**: `SDIV`, `UDIV` (32-bit encoding).
     - Includes **High Register** support for `MOV`, `CMP`, and `ADD`.
     - Dedicated `ADD SP, #imm` and `SUB SP, #imm` forms.
 - **Logic**: `AND`, `ORR`, `EOR`.
-- **Shifts**: `LSL`, `LSR`, `ASR` (Immediate).
+- **Shifts**: `LSL`, `LSR`, `ASR`, `ROR` (Immediate and Register-modified).
+- **Bit Field & Misc**: `BFI`, `BFC`, `SBFX`, `UBFX`, `CLZ`, `RBIT`, `REV`, `REV16`, `UXTB`.
 - **Memory**:
     - `LDR`/`STR` (Immediate Offset / Word)
     - `LDRB`/`STRB` (Immediate Offset / Byte)
+    - `LDRH`/`STRH` (Immediate Offset / Halfword)
     - `LDR` (Literal / PC-Relative)
     - `LDR`/`STR` (SP-Relative)
+    - `LDRD`/`STRD` (Double Word - minimal support)
     - `PUSH`/`POP` (Stack Operations)
 - **Interrupt Control**: `CPSIE`, `CPSID` (affecting `primask`).
-- **Other**: `NOP`
+- **Other**: `NOP`, `IT` block (treated as NOP hints for robustness).
 
 #### **Core Peripherals (STM32F1 Compatible)**
 The system includes a suite of memory-mapped peripherals to support real-world HAL libraries:
@@ -101,6 +105,14 @@ The system includes a suite of memory-mapped peripherals to support real-world H
 - **SysTick**: Standard Cortex-M system timer.
 - **NVIC**: Nested Vectored Interrupt Controller with prioritization and masking.
 - **SCB**: System Control Block with VTOR support.
+- **DMA1**: 7-channel Direct Memory Access controller with bus mastering support.
+- **EXTI**: External Interrupt/Event Controller for handling external signals.
+- **AFIO**: Alternate Function I/O for dynamic pin-to-interrupt mapping.
+
+### DMA Mastering (Two-Phase Execution)
+To maintain modularity and comply with Rust's ownership rules, LabWired uses a two-phase execution model for DMA:
+1.  **Phase 1 (Request)**: During `tick()`, a peripheral returns a list of `DmaRequest`s.
+2.  **Phase 2 (Execute)**: The `SystemBus` iterates over these requests and performs the corresponding memory operations.
 
 #### **32-bit Reassembly**
 The CPU supports robust reassembly of 32-bit Thumb-2 instructions (`BL`, `MOVW`, `MOVT`, `MOV.W`, `MVN.W`, `SDIV`, `UDIV`) by fetching the suffix half-word during the execution of a `Prefix32` opcode.
@@ -123,4 +135,3 @@ The host runner and entry point.
 - **Configuration**: Resolves Chip Descriptors and wiring via `labwired-config`.
 - **Loading**: Loads ELF segments into the dynamically configured `SystemBus`.
 - **Simulation**: Runs the `Machine::step()` loop.
-

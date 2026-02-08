@@ -1,3 +1,9 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 use crate::SimResult;
 
 /// Basic STM32 General Purpose Timer (TIM2-TIM5 compatible)
@@ -74,6 +80,7 @@ impl crate::Peripheral for Timer {
             return crate::PeripheralTickResult {
                 irq: false,
                 cycles: 0,
+                ..Default::default()
             };
         }
 
@@ -90,6 +97,7 @@ impl crate::Peripheral for Timer {
                 return crate::PeripheralTickResult {
                     irq: (self.dier & 1) != 0,
                     cycles: 1,
+                    ..Default::default()
                 };
             }
         }
@@ -97,6 +105,7 @@ impl crate::Peripheral for Timer {
         crate::PeripheralTickResult {
             irq: false,
             cycles: 1,
+            ..Default::default()
         }
     }
 

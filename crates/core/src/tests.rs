@@ -1,13 +1,27 @@
+// LabWired - Firmware Simulation Platform
+// Copyright (C) 2026 Andrii Shylenko
+//
+// This software is released under the MIT License.
+// See the LICENSE file in the project root for full license information.
+
 #[cfg(test)]
 mod tests {
     use crate::cpu::CortexM;
-    use crate::decoder::{self, Instruction};
+    use crate::decoder::arm::{self as decoder, Instruction};
     use crate::peripherals::nvic::NvicState;
     use crate::{Bus, Cpu, Machine, Peripheral, SimResult};
-    use labwired_config::{ChipDescriptor, MemoryRange, PeripheralConfig, SystemManifest};
+    use labwired_config::{Arch, ChipDescriptor, MemoryRange, PeripheralConfig, SystemManifest};
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
     use std::sync::Arc;
+
+    fn create_machine() -> VariableMachine {
+        // Placeholder name collision? No.
+        let mut bus = crate::bus::SystemBus::new();
+        let (cpu, _nvic) = crate::system::cortex_m::configure_cortex_m(&mut bus);
+        Machine::new(cpu, bus)
+    }
+    type VariableMachine = Machine<CortexM>;
 
     #[derive(Debug)]
     struct RecordingPeripheral {
@@ -58,6 +72,8 @@ mod tests {
             crate::PeripheralTickResult {
                 irq: tick_now,
                 cycles: 0,
+                dma_requests: Vec::new(),
+                explicit_irqs: Vec::new(),
             }
         }
     }
@@ -72,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_mov() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         // Use RAM address because Flash via Bus is read-only
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
@@ -91,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_branch() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -119,7 +135,7 @@ mod tests {
     }
     #[test]
     fn test_cpu_execute_ldr_str() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -154,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_uart_write() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         // Base PC = RAM
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
@@ -259,7 +275,7 @@ mod tests {
     fn test_from_config_skips_unsupported_peripherals() {
         let chip = ChipDescriptor {
             name: "test-chip".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),
@@ -325,7 +341,7 @@ mod tests {
     fn test_from_config_defaults_size_irq_and_base() {
         let chip = ChipDescriptor {
             name: "test-chip-2".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),
@@ -383,7 +399,7 @@ mod tests {
     fn test_from_config_honors_size_and_irq() {
         let chip = ChipDescriptor {
             name: "test-chip-3".to_string(),
-            arch: "cortex-m3".to_string(),
+            arch: Arch::Arm,
             flash: MemoryRange {
                 base: 0x0,
                 size: "128KB".to_string(),
@@ -421,7 +437,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_sp_rel() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -455,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_cond_branch() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -502,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_shifts() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -528,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_cmp_reg() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -548,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_mov_reg() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -563,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_cpu_execute_strb_imm() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let base_addr: u64 = 0x2000_0000;
         machine.cpu.pc = base_addr as u32;
 
@@ -579,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_systick_timer() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
 
         // 1. Configure SysTick
         // RVR = 10 (Reload after 10 ticks)
@@ -610,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_exception_stacking() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
 
         // 1. Setup Vector Table for SysTick (Exception 15)
         // Address = 15 * 4 = 60 (0x3C)
@@ -645,7 +661,7 @@ mod tests {
 
     #[test]
     fn test_exception_lifecycle() {
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
 
         // 1. Setup SysTick Vector
         let isr_addr: u32 = 0x0000_1000;
@@ -693,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_iteration_7_instructions() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
         machine.cpu.sp = 0x2000_1000;
 
         // 1. ADD SP, #12 (3 * 4) -> 0xB003
@@ -731,7 +747,7 @@ mod tests {
 
     #[test]
     fn test_iteration_8_instructions() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // 1. STRH R1, [R0, #4] -> 0x8081 (Rn=R0, Rt=R1, imm5=2 so imm=4)
         machine.cpu.r0 = 0x2000_1000;
@@ -779,7 +795,7 @@ mod tests {
 
     #[test]
     fn test_nvic_external_interrupt() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // IRQ 0 (Exception 16)
         let irq_num = 16;
@@ -812,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_vtor_relocation() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // Relocate VTOR to RAM at 0x2000_0000
         machine.bus.write_u32(0xE000ED08, 0x2000_0000).unwrap();
@@ -836,7 +852,7 @@ mod tests {
 
     #[test]
     fn test_mov_w_instruction() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
         machine.cpu.pc = 0;
         machine.cpu.sp = 0x2000_1000;
 
@@ -864,7 +880,7 @@ mod tests {
 
     #[test]
     fn test_mvn_w_instruction() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
         machine.cpu.pc = 0;
         machine.cpu.sp = 0x2000_1000;
 
@@ -880,7 +896,7 @@ mod tests {
 
     #[test]
     fn test_division_instructions() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
         machine.cpu.pc = 0;
         machine.cpu.sp = 0x2000_1000;
 
@@ -917,7 +933,7 @@ mod tests {
 
     #[test]
     fn test_gpio_basic() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // GPIOA Base: 0x4001_0800
         // CRL: 0x00, IDR: 0x08, ODR: 0x0C, BSRR: 0x10, BRR: 0x14
@@ -958,7 +974,7 @@ mod tests {
     #[test]
     fn test_metrics_collection() {
         use crate::metrics::PerformanceMetrics;
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let metrics = std::sync::Arc::new(PerformanceMetrics::new());
         machine.observers.push(metrics.clone());
 
@@ -986,7 +1002,7 @@ mod tests {
     fn test_peripheral_cycle_accounting_systick() {
         use crate::metrics::PerformanceMetrics;
 
-        let mut machine = Machine::<crate::cpu::CortexM>::new();
+        let mut machine = create_machine();
         let metrics = std::sync::Arc::new(PerformanceMetrics::new());
         machine.observers.push(metrics.clone());
 
@@ -1007,7 +1023,7 @@ mod tests {
 
     #[test]
     fn test_bit_field_instructions() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // Test UBFX (Unsigned Bit Field Extract)
         // Extract bits [7:4] from 0xABCD1234
@@ -1067,7 +1083,7 @@ mod tests {
 
     #[test]
     fn test_misc_thumb2_instructions() {
-        let mut machine: Machine<CortexM> = Machine::new();
+        let mut machine: Machine<CortexM> = create_machine();
 
         // Test CLZ (Count Leading Zeros)
         // CLZ R1, R0
@@ -1124,7 +1140,8 @@ mod tests {
             dev: Box::new(Adc::new()),
         });
 
-        let mut machine: Machine<crate::cpu::CortexM> = Machine::with_bus(bus);
+        let (cpu, _nvic) = crate::system::cortex_m::configure_cortex_m(&mut bus);
+        let mut machine = Machine::new(cpu, bus);
 
         // 2. Enable ADC (ADON=1 in CR2)
         // Offset 0x08
@@ -1166,10 +1183,11 @@ mod tests {
     fn test_state_snapshot() {
         use crate::snapshot::MachineSnapshot;
 
-        let bus = crate::bus::SystemBus::new();
+        let mut bus = crate::bus::SystemBus::new();
         // Use default peripherals (Rest of setup matches SystemBus defaults)
 
-        let mut machine: Machine<crate::cpu::CortexM> = Machine::with_bus(bus);
+        let (cpu, _nvic) = crate::system::cortex_m::configure_cortex_m(&mut bus);
+        let mut machine = Machine::new(cpu, bus);
 
         // Modify CPU state
         machine.cpu.r0 = 42;

@@ -1,9 +1,15 @@
+# LabWired - Firmware Simulation Platform
+# Copyright (C) 2026 Andrii Shylenko
+#
+# This software is released under the MIT License.
+# See the LICENSE file in the project root for full license information.
+
 [workspace]
 resolver = "2"
 members = [
     "crates/core",
     "crates/loader",
-    "crates/cli", 
+    "crates/cli",
     "crates/firmware",
     "crates/firmware-ci-fixture",
     "crates/config", "crates/dap", "crates/gdbstub",

@@ -1,5 +1,11 @@
+# LabWired - Firmware Simulation Platform
+# Copyright (C) 2026 Andrii Shylenko
+#
+# This software is released under the MIT License.
+# See the LICENSE file in the project root for full license information.
+
 name: "stm32f103c8"
-arch: "cortex-m3"
+arch: "arm"
 flash:
   base: 0x00000000
   size: "1MB"
@@ -20,3 +26,15 @@ peripherals:
     base_address: 0x40004400
     size: "1KB"
     irq: 38
+  - id: "afio"
+    type: "afio"
+    base_address: 0x40010000
+    size: "1KB"
+  - id: "exti"
+    type: "exti"
+    base_address: 0x40010400
+    size: "1KB"
+  - id: "dma1"
+    type: "dma"
+    base_address: 0x40020000
+    size: "1KB"
