@@ -33,7 +33,9 @@ Create a `.vscode/launch.json` file in your firmware project:
 - **Source-Level Debugging**: If your ELF file contains DWARF debug information, LabWired will automatically map instruction addresses back to your C or Rust source code.
 - **Breakpoints**: Set breakpoints directly in your source code.
 - **Stepping**: Use the standard Step Over, Step Into, and Continue commands.
-- **Register Inspection**: View the current values of R0-R15 (including SP, LR, and PC) in the **Variables** view under the **Registers** scope.
+- **Register Inspection**: View the current values of CPU registers in the **Variables** view:
+  - **ARM**: R0-R15 (including SP, LR, and PC).
+  - **RISC-V**: x0-x31 and PC.
 
 ## 🛠 Advanced Usage
 
